@@ -1,6 +1,10 @@
 site_name: Wenwu Docs
 site_description: Личная база знаний по программированию, колледжу, сетям и проектам
 
+repo_url: https://github.com/Wenwu-PA/wenwu-docs
+repo_name: Wenwu-PA/wenwu-docs
+edit_uri: edit/main/docs/
+
 theme:
   name: material
   language: ru
@@ -40,34 +44,47 @@ markdown_extensions:
 nav:
   - Главная: index.md
 
-  - Программирование:
+  - 🎓 IT TOP:
+      - it-top/index.md
+
+      - 2025:
+          - it-top/2025/index.md
+          - Домашние работы: it-top/2025/homework/index.md
+          - Классные работы: it-top/2025/classwork/index.md
+
+      - 2026:
+          - it-top/2026/index.md
+          - Домашние работы: it-top/2026/homework/index.md
+          - Классные работы: it-top/2026/classwork/index.md
+
+  - 💻 Программирование:
       - programming/index.md
+
       - Python:
           - programming/python/index.md
-          - Алгоритмы: programming/python/algorithms/
-          - Функции: programming/python/functions/
+          - Алгоритмы: programming/python/algorithms/index.md
+          - Функции: programming/python/functions/index.md
+
       - C++:
           - programming/cpp/index.md
-          - Алгоритмы: programming/cpp/algorithms/
+          - Алгоритмы: programming/cpp/algorithms/index.md
+          - OOP: programming/cpp/oop/index.md
+
       - JavaScript:
-          - programming/javascript/
+          - programming/javascript/index.md
 
-  - Колледж:
-      - college/index.md
-      - 2 курс: college/2-course/
-      - 3 курс: college/3-course/
-
-  - Сети:
+  - 🌐 Сети:
       - networking/index.md
-      - OpenWrt: networking/openwrt/
-      - VPN: networking/vpn/
-      - DNS: networking/dns/
-      - Диагностика: networking/troubleshooting/
+      - OpenWrt: networking/openwrt/index.md
+      - VPN: networking/vpn/index.md
+      - DNS: networking/dns/index.md
+      - Маршрутизация: networking/routing/index.md
+      - Диагностика: networking/troubleshooting/index.md
 
-  - Проекты:
+  - 🛠 Проекты:
       - projects/index.md
 
-  - Справочник:
+  - 📚 Справочник:
       - references/index.md
       - Программы: references/software.md
       - Прошивки: references/firmware.md
