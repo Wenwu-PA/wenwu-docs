@@ -1,4 +1,10 @@
-.venv/
-__pycache__/
-.DS_Store
+node_modules/
+dist/
+content-src/
 site/
+public/data/
+public/content/
+playwright-report/
+test-results/
+.DS_Store
+Thumbs.db

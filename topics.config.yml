@@ -1,0 +1,55 @@
+topics:
+  - id: algorithms
+    title: Алгоритмы
+    aliases: [base alg, algorithms, algorithm, алгоритмы, алгоритм]
+  - id: system-programming
+    title: Системное программирование
+    aliases: [system programming, system_programming, системное программирование]
+  - id: databases
+    title: Базы данных
+    aliases: [sql server, основы бд, базы данных, databases, database]
+  - id: english
+    title: Английский язык
+    aliases: [англ, english, английский язык]
+  - id: management
+    title: Менеджмент
+    aliases: [manegment, management, менеджмент]
+  - id: cpp
+    title: C++
+    aliases: [c++, cpp]
+  - id: python
+    title: Python
+    aliases: [python, питон]
+  - id: software-engineering
+    title: Разработка ПО
+    aliases: [supp, supp_and_test_po, supp_and_test_po, разработка по, support and testing po]
+  - id: networks
+    title: Компьютерные сети
+    aliases: [сети, комп сети, networking, networks]
+  - id: discrete-math
+    title: Дискретная математика
+    aliases: [дискретная, discrete mathematics]
+  - id: uml
+    title: UML
+    aliases: [uml]
+  - id: hardware
+    title: Архитектура аппаратных средств
+    aliases: [архитектура аппаратных средств, hardware architecture]
+  - id: statistics
+    title: Статистика
+    aliases: [статистика, statistics]
+  - id: mobile
+    title: Мобильная разработка
+    aliases: [мобил, mobile]
+  - id: csharp
+    title: C#
+    aliases: [c#]
+  - id: numerical-methods
+    title: Численные методы
+    aliases: [числ методы, численные методы]
+  - id: higher-math
+    title: Высшая математика
+    aliases: [высшая]
+  - id: future-code
+    title: Код будущего
+    aliases: [код будущего]

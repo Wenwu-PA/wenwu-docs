@@ -1,9 +1,17 @@
-name: Deploy MkDocs
+name: Build and deploy archive
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+  repository_dispatch:
+    types: [content-updated]
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -11,40 +19,116 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+      skip: ${{ steps.changed.outputs.skip }}
+      cache_hit: ${{ steps.stamp.outputs.cache-hit }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
-      - name: Checkout repository
+      - name: Checkout site
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Checkout public archive source
+        uses: actions/checkout@v4
         with:
-          python-version: "3.x"
+          repository: Wenwu-PA/IT-TOP_academy
+          ref: main
+          path: content-src
+          fetch-depth: 0
+
+      - name: Read source commit
+        id: source
+        run: echo "sha=$(git -C content-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether this content was deployed
+        id: stamp
+        uses: actions/cache/restore@v4
+        with:
+          path: .content-cache-stamp
+          key: it-top-content-${{ steps.source.outputs.sha }}
+
+      - name: Decide whether to build
+        id: changed
+        env:
+          CACHE_HIT: ${{ steps.stamp.outputs.cache-hit }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$CACHE_HIT" == "true" && "$EVENT_NAME" != "workflow_dispatch" && "$EVENT_NAME" != "push" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Content ${{ steps.source.outputs.sha }} is already deployed."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: steps.changed.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        if: steps.changed.outputs.skip != 'true'
+        run: npm ci
 
-      - name: Build MkDocs
-        run: mkdocs build --strict
+      - name: Lint and typecheck
+        if: steps.changed.outputs.skip != 'true'
+        run: |
+          npm run lint
+          npm run typecheck
+
+      - name: Unit tests
+        if: steps.changed.outputs.skip != 'true'
+        run: npm test
+
+      - name: Install Playwright browser
+        if: steps.changed.outputs.skip != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke tests
+        if: steps.changed.outputs.skip != 'true'
+        run: npm run test:e2e
+
+      - name: Configure Pages
+        if: steps.changed.outputs.skip != 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Build archive
+        if: steps.changed.outputs.skip != 'true'
+        run: npm run build
 
       - name: Upload Pages artifact
+        if: steps.changed.outputs.skip != 'true'
         uses: actions/upload-pages-artifact@v4
         with:
-          path: site
+          path: dist
 
   deploy:
     needs: build
+    if: needs.build.outputs.skip != 'true'
     runs-on: ubuntu-latest
-
     permissions:
+      contents: read
       pages: write
       id-token: write
-
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Create content stamp
+        if: needs.build.outputs.cache_hit != 'true'
+        run: echo "${{ needs.build.outputs.source_sha }}" > .content-cache-stamp
+
+      - name: Save deployed source SHA
+        if: needs.build.outputs.cache_hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .content-cache-stamp
+          key: it-top-content-${{ needs.build.outputs.source_sha }}

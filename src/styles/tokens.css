@@ -1,0 +1,69 @@
+:root {
+  color-scheme: light;
+  --red: #D52A27;
+  --red-hover: #B92220;
+  --paper: #FAFAF6;
+  --surface: #FFFFFF;
+  --ink: #242421;
+  --muted: #73736C;
+  --line: #DDDDD5;
+  --success: #236B45;
+  --success-soft: #E8F2EB;
+  --error: #A32925;
+  --error-soft: #FAE8E7;
+  --focus: #D52A27;
+  --disabled: #A9A9A2;
+  --backdrop: rgb(36 36 33 / 45%);
+
+  --font-sans: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-hero: 64px;
+  --text-title: 56px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --leading-tight: 1.15;
+  --leading-normal: 1.25;
+  --leading-copy: 1.45;
+
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
+  --space-10: 80px;
+  --layout-aside: 240px;
+  --layout-content: 1056px;
+  --layout-gap: 48px;
+  --header-height: 96px;
+  --hero-height: 350px;
+  --mobile-inset: 24px;
+
+  --radius: 0;
+  --shadow: none;
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-overlay: 20;
+  --z-dialog: 30;
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --text-hero: 36px;
+    --text-title: 40px;
+    --header-height: 80px;
+    --hero-height: 300px;
+    --layout-gap: 24px;
+  }
+}
