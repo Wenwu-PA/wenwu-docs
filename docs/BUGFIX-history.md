@@ -33,4 +33,4 @@
 
 ## Коммит
 
-Будет указан после фиксации изменений.
+Основная реализация: [`148ed73`](https://github.com/Wenwu-PA/wenwu-docs/commit/148ed7368c113817b3efa8112cdf4759aa758240) (`fix: restore visit history and latest task freshness`).
