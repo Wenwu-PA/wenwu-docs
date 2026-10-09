@@ -9,6 +9,7 @@ import KitPage from './pages/KitPage';
 import TreePage from './pages/TreePage';
 import Footer from './components/Footer';
 import HierarchyPage from './pages/HierarchyPage';
+import SettingsDialog from './components/SettingsDialog';
 
 interface ErrorBoundaryState { failed: boolean }
 
@@ -26,21 +27,31 @@ export default function App() {
   const [manifest, setManifest] = useState<ArchiveManifest | null>(null);
   const [error, setError] = useState(false);
   const [newVersion, setNewVersion] = useState('');
-  const load = useCallback(() => {
-    fetch(`${import.meta.env.BASE_URL}data/manifest.json`, { cache: 'no-store' })
-      .then((response) => { if (!response.ok) throw new Error('Manifest unavailable'); return response.json() as Promise<ArchiveManifest>; })
-      .then(setManifest).catch(() => setError(true));
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const load = useCallback(async () => {
+    let buildId = 'local';
+    try {
+      const versionResponse = await fetch(`${import.meta.env.BASE_URL}data/version.json`, { cache: 'no-store' });
+      if (versionResponse.ok) {
+        const version = await versionResponse.json() as { buildId?: string };
+        if (version.buildId) {
+          buildId = version.buildId;
+          try {
+            const previous = localStorage.getItem('wenwu-build-id');
+            if (previous && previous !== buildId) setNewVersion(buildId);
+            localStorage.setItem('wenwu-build-id', buildId);
+          } catch { /* Storage can be disabled in private browsing. */ }
+        }
+      }
+    } catch { /* Load the manifest without a version key if version.json is unavailable. */ }
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}data/manifest.json?v=${encodeURIComponent(buildId)}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Manifest unavailable');
+      setManifest(await response.json() as ArchiveManifest);
+      setError(false);
+    } catch { setError(true); }
   }, []);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}data/version.json`, { cache: 'no-store' })
-      .then((response) => response.ok ? response.json() as Promise<{ buildId: string }> : Promise.reject())
-      .then(({ buildId }) => {
-        const previous = localStorage.getItem('wenwu-build-id');
-        if (previous && previous !== buildId) setNewVersion(buildId);
-        localStorage.setItem('wenwu-build-id', buildId);
-      }).catch(() => undefined);
-  }, []);
+  useEffect(() => { void Promise.resolve().then(load); }, [load]);
   useEffect(() => {
     const skip = document.querySelector<HTMLAnchorElement>('.skip-link');
     const onClick = (event: MouseEvent) => {
@@ -58,7 +69,7 @@ export default function App() {
     <ErrorBoundary>
       <Header />
       <ScrollManager />
-      {newVersion && <div className="version-banner" role="status">Доступна новая версия <button className="text-link plain-button" onClick={() => { localStorage.setItem('wenwu-build-id', newVersion); window.location.reload(); }}>Обновить</button><button className="plain-button" aria-label="Скрыть уведомление" onClick={() => setNewVersion('')}>×</button></div>}
+      {newVersion && <div className="version-banner" role="status">Доступна новая версия <button className="text-link plain-button" onClick={() => { try { localStorage.setItem('wenwu-build-id', newVersion); } catch { /* Storage can be disabled in private browsing. */ } window.location.reload(); }}>Обновить</button><button className="plain-button" aria-label="Скрыть уведомление" onClick={() => setNewVersion('')}>×</button></div>}
       <Routes>
         <Route path="/" element={<ArchivePage manifest={manifest} />} />
         <Route path="/y/:year" element={<HierarchyPage manifest={manifest} />} />
@@ -71,7 +82,8 @@ export default function App() {
         <Route path="/_kit" element={<KitPage topics={manifest.topics} />} />
         <Route path="*" element={<ArchivePage manifest={manifest} />} />
       </Routes>
-      <Footer manifest={manifest} />
+      <Footer manifest={manifest} onOpenSettings={() => setSettingsOpen(true)} />
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </ErrorBoundary>
   );
 }
@@ -83,10 +95,11 @@ function ScrollManager() {
     window.history.scrollRestoration = 'manual';
     const key = `wenwu-scroll:${location.pathname}`;
     if (navigationType === 'POP' || (location.state as { restore?: boolean } | null)?.restore) {
-      const saved = Number(sessionStorage.getItem(key));
+      let saved = 0;
+      try { saved = Number(sessionStorage.getItem(key)); } catch { /* Session storage may be unavailable. */ }
       requestAnimationFrame(() => window.scrollTo(0, Number.isFinite(saved) ? saved : 0));
     } else window.scrollTo(0, 0);
-    return () => sessionStorage.setItem(key, String(window.scrollY));
+    return () => { try { sessionStorage.setItem(key, String(window.scrollY)); } catch { /* Navigation still works without session storage. */ } };
   }, [location.pathname, location.state, navigationType]);
   return null;
 }

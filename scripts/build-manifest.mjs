@@ -6,7 +6,7 @@ import path from 'node:path';
 import MiniSearch from 'minisearch';
 import YAML from 'yaml';
 import { manifestSchema } from './manifest-schema.mjs';
-import { classifyTopic, classifyWorkPath, githubPathUrl, normalizeTopic, stableId } from './manifest-utils.mjs';
+import { classifyTopic, classifyWorkPath, githubPathUrl, latestTaskActivityDate, normalizeTopic, stableId } from './manifest-utils.mjs';
 
 const sourceDir = path.resolve(process.env.CONTENT_DIR ?? 'content-src');
 const outDir = path.resolve('public');
@@ -57,14 +57,14 @@ function decodeTopicName(id, fallback = 'Без темы') {
 }
 
 function commitMap() {
-  const raw = execFileSync('git', ['-C', sourceDir, 'log', '--format=%H%x09%cs%x09%s', '--name-only', '--no-renames'], {
+  const raw = execFileSync('git', ['-C', sourceDir, 'log', '--format=%H%x09%cI%x09%s', '--name-only', '--no-renames'], {
     encoding: 'utf8', maxBuffer: 128 * 1024 * 1024,
   });
   const last = new Map();
   const first = new Map();
   let current = null;
   for (const line of raw.split(/\r?\n/)) {
-    const match = line.match(/^([a-f0-9]{40})\t(\d{4}-\d{2}-\d{2})\t(.*)$/);
+    const match = line.match(/^([a-f0-9]{40})\t(\d{4}-\d{2}-\d{2}T[^\t]+)\t(.*)$/);
     if (match) {
       current = { hash: match[1], date: match[2], message: match[3] };
     } else if (current && line.trim()) {
@@ -176,8 +176,9 @@ for (const rel of [...dirs].sort((a, b) => a.split('/').length - b.split('/').le
   nodes.push({
     id: stableId(rel), path: rel, name: path.basename(rel) || 'IT-TOP_academy', type: 'dir', ext: '', language: '', size: 0,
     lines: null,
-    lastCommit: { date: commits?.date ?? null, hash: commits?.hash ?? null, message: commits?.message ?? null },
+    lastCommit: { date: commits?.date.slice(0, 10) ?? null, hash: commits?.hash ?? null, message: commits?.message ?? null },
     firstCommit: { date: firstCommit?.date ?? null, hash: firstCommit?.hash ?? null, message: firstCommit?.message ?? null },
+    activityDate: dateAndKind.date && dateAndKind.kind ? latestTaskActivityDate(dateAndKind.date, commits?.date) : null,
     githubUrl: githubPathUrl(gitUrl, rel, 'tree'),
     rawUrl: null,
     editUrl: githubPathUrl(gitUrl, rel, 'edit'),
@@ -286,8 +287,9 @@ for (const rel of [...files.keys()].sort((a, b) => a.localeCompare(b, 'ru'))) {
   nodes.push({
     id, path: rel, name, type: 'file', ext, language: languageMap.get(ext) ?? '', size: file.stat.size,
     lines: lineCount,
-    lastCommit: { date: commit?.date ?? null, hash: commit?.hash ?? null, message: commit?.message ?? null },
+    lastCommit: { date: commit?.date.slice(0, 10) ?? null, hash: commit?.hash ?? null, message: commit?.message ?? null },
     firstCommit: { date: firstCommit?.date ?? null, hash: firstCommit?.hash ?? null, message: firstCommit?.message ?? null },
+    activityDate: null,
     githubUrl: githubPathUrl(gitUrl, rel),
     rawUrl: `https://raw.githubusercontent.com/Wenwu-PA/IT-TOP_academy/main/${rel.split('/').map(encodeURIComponent).join('/')}`,
     editUrl: githubPathUrl(gitUrl, rel, 'edit'),

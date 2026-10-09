@@ -17,6 +17,7 @@ export const manifestSchema = z.object({
     lines: z.number().int().nonnegative().nullable(),
     lastCommit: z.object({ date: z.string().nullable(), hash: z.string().nullable(), message: z.string().nullable() }),
     firstCommit: z.object({ date: z.string().nullable(), hash: z.string().nullable(), message: z.string().nullable() }),
+    activityDate: z.string().datetime().nullable(),
     githubUrl: z.string().url(),
     rawUrl: z.string().url().nullable(),
     editUrl: z.string().url(),

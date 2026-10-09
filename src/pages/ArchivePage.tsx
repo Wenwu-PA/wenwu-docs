@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type MiniSearch from 'minisearch';
 import type { ArchiveManifest, ArchiveNode } from '../types';
+import { useVisitHistory } from '../hooks/useVisitHistory';
+import { sortLatestTasks } from '../utils/latestTasks';
 
 type SearchResult = { id: string; score: number };
-let indexPromise: Promise<InstanceType<typeof MiniSearch>> | null = null;
+let indexPromise: { buildId: string; promise: Promise<InstanceType<typeof MiniSearch>> } | null = null;
 const codeLanguages = new Set(['C', 'C/C++', 'C++', 'C#', 'Python', 'JavaScript', 'TypeScript', 'HTML', 'CSS', 'SQL', 'Java', 'Kotlin', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift']);
 const sourceLanguages = new Set(['C', 'C/C++', 'C++', 'C#', 'Python', 'JavaScript', 'TypeScript', 'SQL', 'Java', 'Kotlin', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift']);
 
@@ -20,14 +22,10 @@ function nodeLabel(node: ArchiveNode, nodes: ArchiveNode[]) {
 
 function displayDate(date: string | null) {
   if (!date) return '—';
+  const isoDate = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[3]}.${isoDate[2]}.${isoDate[1].slice(-2)}`;
   const parts = date.split(/[.-]/);
   return parts.length === 3 ? `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[2].slice(-2)}` : date;
-}
-
-function sortableDate(date: string | null) {
-  if (!date) return '';
-  const [day, month, year] = date.split(/[.-]/);
-  return year ? `${year.padStart(4, '0')}${month.padStart(2, '0')}${day.padStart(2, '0')}` : date;
 }
 
 function semesterFor(date: string | null) {
@@ -46,6 +44,7 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searchError, setSearchError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const recentVisits = useVisitHistory(manifest.nodes);
   const data = useMemo(() => new Map(manifest.nodes.map((node) => [node.id, node])), [manifest.nodes]);
   const periods = [...new Set(manifest.nodes.map((node) => node.path.match(/^(?:classwork|homework)-(\d{4})\//)?.[1]).filter((year): year is string => Boolean(year)))].sort();
   const periodParts = period.split('-');
@@ -54,23 +53,25 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
   const inPeriod = useCallback((node: ArchiveNode) => (!activeYear || node.path.startsWith(`classwork-${activeYear}/`) || node.path.startsWith(`homework-${activeYear}/`)) && (!activeSemester || semesterFor(node.date) === activeSemester), [activeYear, activeSemester]);
   const availableTopics = manifest.topics.filter((topic) => manifest.nodes.some((node) => node.topic === topic.id && (!activeYear || inPeriod(node))));
   const visibleTopics = selectedTopic ? availableTopics.filter((topic) => topic.id === selectedTopic) : availableTopics;
-  const latest = useMemo(() => manifest.nodes
+  const latest = useMemo(() => sortLatestTasks(manifest.nodes
     .filter((node) => node.type === 'dir' && node.date && node.workType)
     .filter(inPeriod)
-    .sort((a, b) => sortableDate(b.date).localeCompare(sortableDate(a.date)))
-    .slice(0, 3), [manifest.nodes, inPeriod]);
+  ).slice(0, 3), [manifest.nodes, inPeriod]);
 
   const search = useCallback(async (term: string) => {
     if (!term.trim()) { setSearchResults(null); return; }
     try {
-      indexPromise ??= (async () => {
-        const response = await fetch(`${import.meta.env.BASE_URL}data/search-index.json`);
+      if (!indexPromise || indexPromise.buildId !== (manifest.buildId ?? 'local')) indexPromise = {
+        buildId: manifest.buildId ?? 'local',
+        promise: (async () => {
+        const response = await fetch(`${import.meta.env.BASE_URL}data/search-index.json?v=${encodeURIComponent(manifest.buildId ?? 'local')}`, { cache: 'no-store' });
         if (!response.ok) throw new Error('Search index unavailable');
         const index = await response.json();
         const MiniSearchModule: typeof MiniSearch = (await import('minisearch')).default;
         return MiniSearchModule.loadJSON(JSON.stringify(index), { fields: ['name', 'path', 'topic', 'tags', 'content'], storeFields: ['name', 'path', 'topic'] });
-      })();
-      const mini = await indexPromise;
+      })(),
+      };
+      const mini = await indexPromise.promise;
       setSearchResults(mini.search(term).slice(0, 30).map((result) => ({ id: String(result.id), score: result.score })));
       setSearchError(false);
     } catch {
@@ -78,7 +79,7 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
       setSearchError(true);
       setSearchResults([]);
     }
-  }, []);
+  }, [manifest.buildId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void search(query), 180);
@@ -127,6 +128,10 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
         <nav className="topic-nav" aria-label="Периоды">
           {periods.map((year) => <details key={year}><summary><Link to={`/y/${year}`}>{year}</Link></summary><div className="period-topic-nav">{manifest.topics.filter((topic) => manifest.nodes.some((node) => node.topic === topic.id && node.path.startsWith(`classwork-${year}/`) || node.topic === topic.id && node.path.startsWith(`homework-${year}/`))).map((topic) => <Link key={topic.id} to={`/y/${year}/${encodeURIComponent(topic.id)}`}>{topic.title}</Link>)}</div></details>)}
         </nav>
+        <section className="recent-sidebar" aria-label="Недавно открытые задания">
+          <p className="eyebrow">НЕДАВНО ОТКРЫТЫЕ</p>
+          {recentVisits.length ? recentVisits.slice(0, 5).map((visit) => <Link key={visit.id} to={`/file/${visit.id}`}>{visit.title}</Link>) : <span className="path-label">Открытых работ пока нет</span>}
+        </section>
         <div className="sidebar-divider" />
         <p className="eyebrow">ПЕРИОД</p>
         <label className="sr-only" htmlFor="period-filter">Фильтр по периоду</label><select id="period-filter" className="period-filter" value={period} onChange={(event) => updateParam('period', event.target.value)}><option value="all">Все периоды</option>{periods.flatMap((year) => [<option key={`${year}-autumn`} value={`${year}-autumn`}>{year} / Осенний семестр</option>, <option key={`${year}-spring`} value={`${year}-spring`}>{year} / Весенний семестр</option>])}</select>
@@ -143,8 +148,8 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
             const yearNodes = manifest.nodes.filter((node) => node.path.startsWith(`classwork-${year}/`) || node.path.startsWith(`homework-${year}/`));
             const subjects = new Set(yearNodes.map((node) => node.topic).filter((topic): topic is string => Boolean(topic)));
             const tasks = yearNodes.filter((node) => node.type === 'dir' && node.date && node.workType);
-            const latestDate = yearNodes.map((node) => node.lastCommit.date).filter((date): date is string => Boolean(date)).sort().at(-1);
-            return <Link key={year} className="period-card" to={`/y/${year}`}><span className="subject-number">{year}</span><strong>{subjects.size} предметов</strong><span>{tasks.length} заданий · {yearNodes.filter((node) => node.type === 'file').length} файлов</span><span className="path-label">Обновлено {latestDate ?? '—'}</span></Link>;
+            const latestDate = yearNodes.map((node) => node.activityDate).filter((date): date is string => Boolean(date)).sort().at(-1) ?? null;
+            return <Link key={year} className="period-card" to={`/y/${year}`}><span className="subject-number">{year}</span><strong>{subjects.size} предметов</strong><span>{tasks.length} заданий · {yearNodes.filter((node) => node.type === 'file').length} файлов</span><span className="path-label">Обновлено {displayDate(latestDate)}</span></Link>;
           })}</div></section>
           <section id="subjects" className="subjects-section"><h2>Все предметы</h2><div className="subject-list">{visibleTopics.map((topic, index) => {
             const topicNodes = manifest.nodes.filter((node) => node.topic === topic.id && node.type === 'file');
@@ -160,7 +165,8 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
             </div>;
           })}</div></section>
           <Link className="tree-link" to="/tree">Открыть дерево файлов →</Link>
-          <section id="assignments" className="latest-section"><h2>Последние задания</h2><div className="latest-list">{latest.map((node) => <Link className="latest-row" key={node.id} to={`/file/${node.id}`}><span className="date-label">{displayDate(node.date)}</span><span className="latest-title">{nodeLabel(node, manifest.nodes)}</span><span className="work-label">{node.workType}</span><span className="latest-language">{manifest.nodes.find((item) => item.type === 'file' && item.path.startsWith(`${node.path}/`) && codeLanguages.has(item.language))?.language ?? 'Документы'}</span></Link>)}</div></section>
+          <section id="assignments" className="latest-section"><h2>Последние задания</h2><div className="latest-list">{latest.map((node) => <Link className="latest-row" key={node.id} to={`/file/${node.id}`}><span className="date-label">{displayDate(node.activityDate ?? node.date)}</span><span className="latest-title">{nodeLabel(node, manifest.nodes)}</span><span className="work-label">{node.workType}</span><span className="latest-language">{manifest.nodes.find((item) => item.type === 'file' && item.path.startsWith(`${node.path}/`) && codeLanguages.has(item.language))?.language ?? 'Документы'}</span></Link>)}</div></section>
+          <section className="recent-section"><h2>Недавно открытые</h2>{recentVisits.length ? <div className="latest-list">{recentVisits.slice(0, 5).map((visit) => <Link className="latest-row recent-row" key={visit.id} to={`/file/${visit.id}`}><time className="date-label" dateTime={new Date(visit.visitedAt).toISOString()}>{new Date(visit.visitedAt).toLocaleString('ru-RU')}</time><span className="latest-title">{visit.title}</span><span className="path-label">{visit.path}</span></Link>)}</div> : <p className="path-label">Открытые страницы заданий появятся здесь.</p>}</section>
           {selectedTopic && <section className="all-topic-files"><h2>{manifest.topics.find((item) => item.id === selectedTopic)?.title}</h2>{manifest.nodes.filter((node) => node.topic === selectedTopic && node.type === 'file').slice(0, 40).map((node) => <SearchRow key={node.id} node={node} />)}</section>}
         </>}
       </section>

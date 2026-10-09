@@ -45,6 +45,14 @@ export function classifyWorkPath(relativePath) {
   return { date, kind: type === 'homework' || type === 'hw' ? 'HW' : type === 'classwork' || type === 'cw' ? 'CW' : null };
 }
 
+export function latestTaskActivityDate(folderDate, commitDate) {
+  const folderParts = folderDate?.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  const folderTimestamp = folderParts ? Date.parse(`${folderParts[3]}-${folderParts[2]}-${folderParts[1]}T00:00:00.000Z`) : Number.NaN;
+  const commitTimestamp = commitDate ? Date.parse(commitDate) : Number.NaN;
+  const timestamps = [folderTimestamp, commitTimestamp].filter(Number.isFinite);
+  return timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null;
+}
+
 export function githubPathUrl(base, relativePath, mode = 'blob') {
   const suffix = normalizePath(relativePath).split('/').map(encodeURIComponent).join('/');
   return `${base}/${mode}/main${suffix ? `/${suffix}` : ''}`;

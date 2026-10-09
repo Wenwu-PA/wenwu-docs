@@ -11,6 +11,7 @@ export interface ArchiveNode {
   lines: number | null;
   lastCommit: { date: string | null; hash: string | null; message: string | null };
   firstCommit: { date: string | null; hash: string | null; message: string | null };
+  activityDate: string | null;
   githubUrl: string;
   rawUrl: string | null;
   editUrl: string;

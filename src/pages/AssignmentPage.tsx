@@ -6,6 +6,7 @@ import type { ArchiveManifest, ArchiveNode } from '../types';
 import DiaryDialog from '../components/DiaryDialog';
 import { highlightCode } from '../utils/highlightCode';
 import PdfPreview from './PdfPreview';
+import { recordVisit } from '../utils/visitHistory';
 
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true });
 markdown.renderer.rules.link_open = (tokens, index, options, _env, renderer) => {
@@ -55,6 +56,11 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
     catch { return {}; }
   });
   const submitted = localStatuses[nodeId] === 'submitted';
+
+  useEffect(() => {
+    if (!node || node.id !== nodeId) return;
+    recordVisit(node, manifest.nodes);
+  }, [manifest.nodes, node, nodeId]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

@@ -2,9 +2,10 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
 const manifest = JSON.parse(readFileSync('public/data/manifest.json', 'utf8')) as {
-  nodes: { id: string; name: string; path: string; type: string; ext: string; contentFile: string | null; previewHtml?: string | null }[];
+  nodes: { id: string; name: string; title: string; path: string; type: string; ext: string; contentFile: string | null; previewHtml?: string | null }[];
 };
 const sourceFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.py' && node.contentFile);
+const otherSourceFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.py' && node.contentFile && node.id !== sourceFile?.id);
 const docxFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.docx' && node.previewHtml);
 const csharpFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.cs' && node.path.includes('c#') && node.contentFile);
 
@@ -41,6 +42,32 @@ test('file preview has a permanent line link and supports diary export', async (
   await expect(page.locator('.status-label')).toHaveText('ОТПРАВЛЕНО');
   await page.reload();
   await expect(page.locator('.status-label')).toHaveText('ОТПРАВЛЕНО');
+});
+
+test('recently opened work appears on the home page and can be cleared in settings', async ({ page }) => {
+  test.skip(!sourceFile, 'No previewable Python source file in the content repository.');
+  await page.goto('/');
+  await page.goto(`/#/file/${sourceFile!.id}`);
+  await expect(page.getByRole('heading', { name: sourceFile!.name.replace(/\.py$/, '') })).toBeVisible();
+  await page.goBack();
+  await expect(page.locator(`.recent-section a[href$="/file/${sourceFile!.id}"]`)).toBeVisible();
+  await expect(page.locator(`.recent-sidebar a[href$="/file/${sourceFile!.id}"]`)).toBeVisible();
+  await page.getByRole('button', { name: 'Настройки' }).click();
+  await page.getByRole('dialog', { name: 'Настройки' }).getByRole('button', { name: 'Очистить историю посещений' }).click();
+  await expect(page.locator('.recent-section')).toContainText('Открытые страницы заданий появятся здесь.');
+  await expect(page.locator('.recent-sidebar')).toContainText('Открытых работ пока нет');
+});
+
+test('visit history synchronizes across tabs through the storage event', async ({ page, context }) => {
+  test.skip(!otherSourceFile, 'No second Python source file in the content repository.');
+  await page.goto('/');
+  const otherTab = await context.newPage();
+  await otherTab.goto('/');
+  const visit = { id: otherSourceFile!.id, path: otherSourceFile!.path, title: otherSourceFile!.title, visitedAt: Date.now() };
+  await otherTab.evaluate((entry) => localStorage.setItem('wenwu-recent-visits-v1', JSON.stringify([entry])), visit);
+  await expect(page.locator(`.recent-section a[href$="/file/${otherSourceFile!.id}"]`)).toBeVisible();
+  await expect(page.locator(`.recent-sidebar a[href$="/file/${otherSourceFile!.id}"]`)).toBeVisible();
+  await otherTab.close();
 });
 
 test('local editor loads and keeps a downloadable draft', async ({ page }) => {
