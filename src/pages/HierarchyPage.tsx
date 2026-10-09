@@ -11,7 +11,7 @@ export default function HierarchyPage({ manifest }: { manifest: ArchiveManifest 
   const { year, topicId } = useParams();
   const nodes = useMemo(() => manifest.nodes.filter((node) => yearFrom(node) === year), [manifest.nodes, year]);
   const topicIds = [...new Set(nodes.map((node) => node.topic).filter((id): id is string => Boolean(id)))];
-  const allSubjectNodes = manifest.nodes.filter((node) => node.topic === topicId);
+  const allSubjectNodes = manifest.nodes.filter((node) => node.topic === topicId && (!year || yearFrom(node) === year));
   const sources = allSubjectNodes.filter((node) => node.type === 'dir' && node.path.match(/^(?:classwork|homework)-\d{4}\/[^/]+$/));
   const children = useMemo(() => {
     const map = new Map<string | null, ArchiveNode[]>();
@@ -24,12 +24,20 @@ export default function HierarchyPage({ manifest }: { manifest: ArchiveManifest 
     <Link className="back-link" to={year ? `/y/${year}` : '/'}>← {year ?? 'Архив'}</Link>
     <h1>{titleFor(manifest, topicId)}</h1>
     <p className="assignment-path">{sources.map((node) => node.path).join(' · ') || 'Папки источников пока не найдены'}</p>
-    {(['CW', 'HW'] as const).map((kind) => {
+    {(['CW', 'HW'] as const).flatMap((kind) => {
       const roots = sources.filter((node) => kindFrom(node) === kind);
-      return <section className="hierarchy-section" key={kind}>
-        <h2>{kind === 'CW' ? 'Классная работа' : 'Домашняя работа'} <span className="path-label">{roots.length} источников</span></h2>
-        {!roots.length ? <p>Материалов пока нет.</p> : <div className="hierarchy-tree">{roots.map((root) => <TreeFolder key={root.id} node={root} children={children} depth={0} />)}</div>}
-      </section>;
+      const years = [...new Set(roots.map(yearFrom).filter((value): value is string => Boolean(value)))].sort((a, b) => b.localeCompare(a));
+      if (!years.length) return [<section className="hierarchy-section" key={`${kind}-empty`}>
+        <h2>{kind === 'CW' ? 'Классная работа' : 'Домашняя работа'} <span className="path-label">без указанного года</span></h2>
+        <p>Материалов пока нет.</p>
+      </section>];
+      return years.map((sourceYear) => {
+        const yearRoots = roots.filter((node) => yearFrom(node) === sourceYear);
+        return <section className="hierarchy-section" key={`${kind}-${sourceYear}`}>
+          <h2>{kind === 'CW' ? 'Классная работа' : 'Домашняя работа'} <span className="hierarchy-year">{sourceYear} год</span><span className="path-label">{yearRoots.length} источников</span></h2>
+          <div className="hierarchy-tree">{yearRoots.map((root) => <TreeFolder key={root.id} node={root} children={children} depth={0} />)}</div>
+        </section>;
+      });
     })}
   </main>;
 

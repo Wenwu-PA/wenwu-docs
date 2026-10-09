@@ -53,8 +53,8 @@ test('local editor loads and keeps a downloadable draft', async ({ page }) => {
 
 test('archive and file page stay within target viewports', async ({ page }) => {
   test.skip(!sourceFile, 'No previewable Python source file in the content repository.');
-  for (const width of [1440, 1024, 768, 390]) {
-    await page.setViewportSize({ width, height: 844 });
+  for (const { width, height } of [{ width: 1440, height: 844 }, { width: 1080, height: 1920 }, { width: 1024, height: 844 }, { width: 768, height: 844 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize({ width, height });
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Периоды' })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
@@ -69,9 +69,18 @@ test('periods open subjects and real CW/HW folders', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Период 2026' })).toBeVisible();
   await page.getByRole('link', { name: 'Алгоритмы' }).click();
   await expect(page.getByRole('heading', { name: 'Алгоритмы' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Классная работа' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Домашняя работа' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Классная работа 2026 год/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Домашняя работа 2026 год/ })).toBeVisible();
   await expect(page.getByText('classwork-2026/base alg')).toBeVisible();
+});
+
+test('course number is 03 and year-specific subject pages label the work year', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.hero-count')).toHaveText('[ 03 ]');
+  await page.goto('/#/y/2025/discrete-math');
+  await expect(page.getByRole('heading', { name: /Классная работа 2025 год/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Домашняя работа 2025 год/ })).toBeVisible();
+  await expect(page.locator('.assignment-path')).not.toContainText('2026');
 });
 
 test('DOCX preview is converted at build time and has the original download', async ({ page }) => {

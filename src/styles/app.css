@@ -72,6 +72,7 @@
 .hierarchy-page { max-width: 1440px; min-height: 65vh; margin: 0 auto; padding: var(--space-6); }
 .hierarchy-page h1 { margin: var(--space-2) 0; font-size: var(--text-2xl); }
 .hierarchy-page h2 { display: flex; align-items: baseline; gap: var(--space-2); margin: var(--space-4) 0 var(--space-2); font-size: var(--text-xl); }
+.hierarchy-year { color: var(--red); font: var(--weight-regular) var(--text-sm)/var(--leading-normal) var(--font-mono); white-space: nowrap; }
 .back-link { min-height: 44px; display: inline-flex; align-items: center; color: var(--red); }
 .hierarchy-list { display: flex; flex-direction: column; gap: 1px; margin-block-start: var(--space-3); background: var(--line); }
 .hierarchy-row { min-height: 68px; display: grid; grid-template-columns: 48px minmax(160px, 1fr) minmax(180px, 1.5fr) 160px 120px; align-items: center; gap: var(--space-2); padding: var(--space-2); background: var(--surface); }
@@ -204,6 +205,24 @@
   .hero { grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); gap: var(--space-3); }
   .archive-layout { grid-template-columns: 200px minmax(0, 1fr); padding: var(--space-3); }
   .subject-card { grid-template-columns: 42px minmax(180px, 1.5fr) minmax(100px, 1fr) 90px; }
+}
+@media (orientation: portrait) and (min-width: 851px) and (max-width: 1200px) {
+  .site-header { min-height: var(--header-height); height: auto; flex-wrap: wrap; row-gap: var(--space-1); padding-block: var(--space-2); }
+  .header-nav { flex: 1 1 auto; justify-content: flex-end; gap: clamp(var(--space-2), 3vw, var(--space-4)); }
+  .hero { grid-template-columns: minmax(0, 1fr) minmax(220px, 260px); gap: var(--space-3); padding: var(--space-5); }
+  .hero h1 { font-size: clamp(48px, 5.4vw, 60px); }
+  .archive-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4); }
+  .archive-sidebar { display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(260px, 1.5fr) minmax(190px, 1fr); grid-template-areas: "label topics period-label" "all topics period" "legend topics period"; align-items: center; gap: var(--space-1) var(--space-3); padding-block-end: var(--space-2); border-block-end: 1px solid var(--line); }
+  .archive-sidebar > :nth-child(1) { grid-area: label; }
+  .archive-sidebar > :nth-child(2) { grid-area: all; }
+  .archive-sidebar > :nth-child(3), .archive-sidebar > :nth-child(5) { display: none; }
+  .archive-sidebar > :nth-child(4) { grid-area: topics; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: center; gap: 0 var(--space-2); }
+  .archive-sidebar > :nth-child(6) { grid-area: period-label; }
+  .archive-sidebar > :nth-child(7) { grid-area: period-label; }
+  .archive-sidebar > :nth-child(8) { grid-area: period; }
+  .archive-sidebar > :nth-child(9) { grid-area: legend; }
+  .topic-nav details a { min-height: 36px; display: inline-flex; align-items: center; }
+  .subject-card { grid-template-columns: 42px minmax(240px, 1.8fr) minmax(150px, 1fr) 120px; }
 }
 @media (max-width: 850px) {
   .header-nav { margin-inline-start: auto; }

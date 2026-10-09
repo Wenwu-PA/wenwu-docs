@@ -117,7 +117,7 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
   return <>
     <section className="hero" aria-labelledby="hero-title">
       <div className="hero-copy"><p className="eyebrow hero-eyebrow">IT-TOP_ACADEMY / WENWU-PA</p><h1 id="hero-title">{manifest.site?.heroTitle ?? 'Код. Практика.'}<br />{manifest.site?.heroTitleSecond ?? 'Всё по порядку.'}</h1><p>{manifest.site?.tagline ?? 'Учебные задания, решения и проекты по разработке ПО.'}</p></div>
-      <div className="hero-stamp" aria-label={`Курс ${manifest.site?.course ?? 2}, ${manifest.site?.courseLabel ?? 'разработка программного обеспечения'}`}><span className="hero-count">[ {String(manifest.site?.course ?? 2).padStart(2, '0')} ]</span><span className="eyebrow">КУРС / {(manifest.site?.courseLabel ?? 'РАЗРАБОТКА ПО').toLocaleUpperCase('ru')}</span><p>{manifest.site?.heroNote ?? 'От первой строки\nдо рабочего проекта.'}</p></div>
+      <div className="hero-stamp" aria-label={`Курс ${manifest.site?.course ?? 3}, ${manifest.site?.courseLabel ?? 'разработка программного обеспечения'}`}><span className="hero-count">[ {String(manifest.site?.course ?? 3).padStart(2, '0')} ]</span><span className="eyebrow">КУРС / {(manifest.site?.courseLabel ?? 'РАЗРАБОТКА ПО').toLocaleUpperCase('ru')}</span><p>{manifest.site?.heroNote ?? 'От первой строки\nдо рабочего проекта.'}</p></div>
     </section>
     <main id="main" className="archive-layout">
       <aside className="archive-sidebar" aria-label="Навигация по архиву">

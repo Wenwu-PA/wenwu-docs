@@ -35,15 +35,22 @@ try {
     const page = await browser.newPage();
     page.on('console', (message) => { if (message.type() === 'error') console.error('[browser]', message.text()); });
     page.on('pageerror', (error) => console.error('[pageerror]', error.message));
-    for (const width of [1440, 1024, 768, 390]) {
-      await page.setViewportSize({ width, height: 1100 });
+    const viewports = [
+      { width: 1440, height: 1100, label: '1440' },
+      { width: 1080, height: 1920, label: '1080x1920' },
+      { width: 1024, height: 1100, label: '1024' },
+      { width: 768, height: 1100, label: '768' },
+      { width: 390, height: 844, label: '390' },
+    ];
+    for (const { width, height, label } of viewports) {
+      await page.setViewportSize({ width, height });
       await page.goto(baseUrl, { waitUntil: 'networkidle' });
       await page.getByRole('heading', { name: 'Периоды' }).waitFor();
-      await page.screenshot({ path: path.join('docs/screenshots', `archive-${width}.png`), fullPage: true });
+      await page.screenshot({ path: path.join('docs/screenshots', `archive-${label}.png`), fullPage: true });
       await page.goto(`${baseUrl}#/file/${task.id}`, { waitUntil: 'networkidle' });
       await page.getByRole('heading', { name: task.title }).waitFor();
-      await page.screenshot({ path: path.join('docs/screenshots', `assignment-${width}.png`), fullPage: true });
-      console.log(`Captured archive and assignment at ${width}px.`);
+      await page.screenshot({ path: path.join('docs/screenshots', `assignment-${label}.png`), fullPage: true });
+      console.log(`Captured archive and assignment at ${width}×${height}.`);
     }
   } finally {
     await browser.close();
