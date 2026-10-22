@@ -174,10 +174,12 @@ test('settings exports and imports local data as one JSON file', async ({ page }
 
   const settings = { version: 1, theme: 'dark', historyLimit: 50, textSize: 'normal', codeSize: 14, wrapCode: false, lineNumbers: true, highlightTheme: 'auto', diaryUrl: '', diaryTemplate: 'Imported {title}', zipFileName: '{title}.zip' };
   page.once('dialog', (dialog) => dialog.accept());
+  const importedPageLoaded = page.waitForEvent('load');
   await page.locator('input[type="file"]').setInputFiles({
     name: 'archive-backup.json', mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ format: 'wenwu-local-data', version: 1, data: { 'wenwu-settings-v1': JSON.stringify(settings), 'wenwu-draft:restored': 'restored draft', 'wenwu-diary-log-v1': '[]' } })),
   });
+  await importedPageLoaded;
   await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('wenwu-draft:restored'))).toBe('restored draft');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('wenwu-settings-v1') ?? '{}').historyLimit)).toBe(50);
