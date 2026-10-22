@@ -6,6 +6,7 @@ export const manifestSchema = z.object({
   commit: z.string(),
   buildId: z.string().optional(),
   site: z.record(z.string(), z.unknown()).optional(),
+  taskSummary: z.object({ cwCount: z.number().int().nonnegative(), hwCount: z.number().int().nonnegative(), total: z.number().int().nonnegative(), fileCount: z.number().int().nonnegative().optional() }),
   nodes: z.array(z.object({
     id: z.string().min(1),
     path: z.string(),
@@ -28,6 +29,7 @@ export const manifestSchema = z.object({
     status: z.string().nullable(),
     contentFile: z.string().nullable(),
     previewHtml: z.string().nullable().optional(),
+    notebookFile: z.string().nullable().optional(),
     conversionError: z.string().nullable().optional(),
     parentId: z.string().nullable(),
     statement: z.string().nullable(),
@@ -35,5 +37,9 @@ export const manifestSchema = z.object({
     date: z.string().nullable(),
     workType: z.enum(['HW', 'CW']).nullable(),
   })),
-  topics: z.array(z.object({ id: z.string(), title: z.string() })),
+  topics: z.array(z.object({
+    id: z.string(), title: z.string(), cwCount: z.number().int().nonnegative().optional(), hwCount: z.number().int().nonnegative().optional(), total: z.number().int().nonnegative().optional(),
+    fileCount: z.number().int().nonnegative().optional(),
+    periodCounts: z.array(z.object({ year: z.string(), cwCount: z.number().int().nonnegative(), hwCount: z.number().int().nonnegative(), total: z.number().int().nonnegative(), fileCount: z.number().int().nonnegative().optional() })).optional(),
+  })),
 });

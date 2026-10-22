@@ -37,7 +37,7 @@ export interface ArchiveManifest {
   commit: string;
   buildId?: string;
   site?: { course?: number; courseLabel?: string; heroTitle?: string; heroTitleSecond?: string; tagline?: string; heroNote?: string };
-  taskSummary?: { cwCount: number; hwCount: number; total: number; fileCount?: number };
+  taskSummary: { cwCount: number; hwCount: number; total: number; fileCount?: number };
   topics: { id: string; title: string; cwCount?: number; hwCount?: number; total?: number; fileCount?: number; periodCounts?: { year: string; cwCount: number; hwCount: number; total: number; fileCount?: number }[] }[];
   nodes: ArchiveNode[];
 }
