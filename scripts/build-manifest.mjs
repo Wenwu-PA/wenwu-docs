@@ -7,11 +7,14 @@ import MiniSearch from 'minisearch';
 import YAML from 'yaml';
 import { manifestSchema } from './manifest-schema.mjs';
 import { classifyTopic, classifyWorkPath, githubPathUrl, latestTaskActivityDate, normalizeTopic, stableId } from './manifest-utils.mjs';
+import { countSubjectTasks } from './lib/task-detection.mjs';
+import { convertNotebook } from './lib/notebook-convert.mjs';
 
 const sourceDir = path.resolve(process.env.CONTENT_DIR ?? 'content-src');
 const outDir = path.resolve('public');
 const gitUrl = 'https://github.com/Wenwu-PA/IT-TOP_academy';
 const maxPreviewBytes = 1024 * 1024;
+const maxNotebookBytes = 5 * 1024 * 1024;
 const searchableTextBytes = 32 * 1024;
 const textualExts = new Set([
   '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh', '.cs', '.py', '.js', '.jsx', '.ts', '.tsx',
@@ -28,7 +31,7 @@ const conversionCache = path.resolve('node_modules/.cache/archive-conversions');
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 async function cachedConversion(filePath, convert) {
   const bytes = await readFile(filePath);
-  const key = createHash('sha256').update(bytes).digest('hex');
+  const key = createHash('sha256').update('archive-conversion-v2\0').update(bytes).digest('hex');
   const cacheFile = path.join(conversionCache, `${key}.json`);
   try { return JSON.parse(await readFile(cacheFile, 'utf8')); } catch { /* Cache miss. */ }
   const result = await convert(bytes);
@@ -201,31 +204,24 @@ for (const rel of [...files.keys()].sort((a, b) => a.localeCompare(b, 'ru'))) {
   const isMedia = mediaExts.has(ext);
   const id = stableId(rel);
   const assetKey = createHash('sha256').update(rel).digest('hex');
-  const previewable = (isText || isMedia || documentExts.has(ext)) && file.stat.size <= (documentExts.has(ext) ? 10 * maxPreviewBytes : maxPreviewBytes);
+  const previewable = (isText || isMedia || documentExts.has(ext)) && file.stat.size <= (ext === '.ipynb' ? maxNotebookBytes : documentExts.has(ext) ? 10 * maxPreviewBytes : maxPreviewBytes);
   const commit = git.last.get(rel);
   const firstCommit = git.first.get(rel);
   let body = '';
   let lineCount = null;
   let contentFile = null;
   let previewHtml = null;
+  let notebookFile = null;
   let conversionError = null;
   if (['.docx', '.pptx', '.xlsx', '.csv', '.pdf', '.ipynb'].includes(ext)) {
     try {
       if (ext === '.ipynb') {
-        const result = await cachedConversion(file.full, async (bytes) => {
-          const notebook = JSON.parse(bytes.toString('utf8'));
-          const MarkdownIt = (await import('markdown-it')).default;
-          const markdown = new MarkdownIt({ html: false, linkify: true });
-          const cells = (notebook.cells ?? []).map((cell) => {
-            const text = Array.isArray(cell.source) ? cell.source.join('') : String(cell.source ?? '');
-            return cell.cell_type === 'markdown' ? markdown.render(text) : `<pre><code>${escapeHtml(text)}</code></pre>`;
-          });
-          return { html: cells.join(''), text: cells.length ? notebook.cells.map((cell) => Array.isArray(cell.source) ? cell.source.join('') : String(cell.source ?? '')).join('\n') : '' };
-        });
-        body = result.text.slice(0, searchableTextBytes);
-        previewHtml = `/content/previews/${assetKey}.html`;
+        if (file.stat.size > maxNotebookBytes) throw new Error('Notebook exceeds the 5 MiB preview limit.');
+        const result = await cachedConversion(file.full, async (bytes) => convertNotebook(bytes.toString('utf8')));
+        body = result.searchText.slice(0, searchableTextBytes);
+        notebookFile = `/content/previews/${assetKey}.json`;
         await mkdir(path.join(outContent, 'previews'), { recursive: true });
-        await writeFile(path.join(outContent, 'previews', `${assetKey}.html`), result.html);
+        await writeFile(path.join(outContent, 'previews', `${assetKey}.json`), JSON.stringify(result));
       } else if (ext === '.docx') {
         const mammoth = (await import('mammoth')).default;
         const result = await cachedConversion(file.full, async (bytes) => {
@@ -294,7 +290,7 @@ for (const rel of [...files.keys()].sort((a, b) => a.localeCompare(b, 'ru'))) {
     rawUrl: `https://raw.githubusercontent.com/Wenwu-PA/IT-TOP_academy/main/${rel.split('/').map(encodeURIComponent).join('/')}`,
     editUrl: githubPathUrl(gitUrl, rel, 'edit'),
     githubDevUrl: githubPathUrl('https://github.dev/Wenwu-PA/IT-TOP_academy', rel),
-    topic, tags: [], title: path.basename(name, ext) || name, status: null, contentFile, previewHtml, conversionError, parentId: stableId(parentRel),
+    topic, tags: [], title: path.basename(name, ext) || name, status: null, contentFile, previewHtml, notebookFile, conversionError, parentId: stableId(parentRel),
     statement: null, method: null,
     date: null, workType: null,
   });
@@ -317,11 +313,31 @@ for (const node of nodes) {
   }
 }
 
+const directoryPaths = [...dirs];
+const filePaths = [...files.keys()];
+const taskCountsByTopic = new Map();
+const sourceDirectories = nodes.filter((node) => node.type === 'dir' && /^(?:classwork|homework)-\d{4}\/[^/]+$/.test(node.path));
+for (const topic of topicRows) {
+  const periodCounts = [];
+  for (const year of [...new Set(sourceDirectories.filter((node) => node.topic === topic.id).map((node) => node.path.match(/^(?:classwork|homework)-(\d{4})/)[1]))].sort()) {
+    const subjectSources = sourceDirectories.filter((node) => node.topic === topic.id && node.path.startsWith(`classwork-${year}/`) || node.topic === topic.id && node.path.startsWith(`homework-${year}/`));
+    const counts = countSubjectTasks(subjectSources, directoryPaths, filePaths);
+    const fileCount = nodes.filter((node) => node.type === 'file' && node.topic === topic.id && /^(?:classwork|homework)-\d{4}\//.test(node.path) && node.path.match(/^(?:classwork|homework)-(\d{4})\//)?.[1] === year).length;
+    periodCounts.push({ year, cwCount: counts.cwCount, hwCount: counts.hwCount, total: counts.total, fileCount });
+  }
+  const counts = periodCounts.reduce((total, item) => ({ cwCount: total.cwCount + item.cwCount, hwCount: total.hwCount + item.hwCount, total: total.total + item.total, fileCount: total.fileCount + item.fileCount }), { cwCount: 0, hwCount: 0, total: 0, fileCount: 0 });
+  taskCountsByTopic.set(topic.id, { ...counts, periodCounts });
+}
+const taskSummary = [...taskCountsByTopic.values()].reduce((total, item) => ({ cwCount: total.cwCount + item.cwCount, hwCount: total.hwCount + item.hwCount, total: total.total + item.total }), { cwCount: 0, hwCount: 0, total: 0 });
+taskSummary.fileCount = nodes.filter((node) => node.type === 'file').length;
+if (taskSummary.total !== [...taskCountsByTopic.values()].reduce((sum, item) => sum + item.total, 0)) throw new Error('Инвариант заданий нарушен: сумма предметов не равна общему числу.');
+
 const manifest = {
   generatedAt: new Date().toISOString(), source: gitUrl, commit: sourceCommit,
   buildId: `${process.env.GITHUB_SHA ?? 'local'}-${sourceCommit}`,
   site: siteConfig,
-  topics: topicRows.map(({ id, title }) => ({ id, title })),
+  taskSummary,
+  topics: topicRows.map(({ id, title }) => ({ id, title, ...taskCountsByTopic.get(id) })),
   nodes: nodes.map((node) => ({ ...node, tags: node.workType ? [...node.tags, node.workType] : node.tags })),
 };
 const parsed = manifestSchema.safeParse(manifest);

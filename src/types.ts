@@ -22,6 +22,7 @@ export interface ArchiveNode {
   status: string | null;
   contentFile: string | null;
   previewHtml?: string | null;
+  notebookFile?: string | null;
   conversionError?: string | null;
   parentId: string | null;
   statement: string | null;
@@ -36,7 +37,8 @@ export interface ArchiveManifest {
   commit: string;
   buildId?: string;
   site?: { course?: number; courseLabel?: string; heroTitle?: string; heroTitleSecond?: string; tagline?: string; heroNote?: string };
-  topics: { id: string; title: string }[];
+  taskSummary?: { cwCount: number; hwCount: number; total: number; fileCount?: number };
+  topics: { id: string; title: string; cwCount?: number; hwCount?: number; total?: number; fileCount?: number; periodCounts?: { year: string; cwCount: number; hwCount: number; total: number; fileCount?: number }[] }[];
   nodes: ArchiveNode[];
 }
 

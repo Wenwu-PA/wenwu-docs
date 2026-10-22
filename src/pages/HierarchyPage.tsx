@@ -6,6 +6,8 @@ const yearFrom = (node: ArchiveNode) => node.path.match(/^(?:classwork|homework)
 const kindFrom = (node: ArchiveNode) => node.path.startsWith('classwork-') ? 'CW' : node.path.startsWith('homework-') ? 'HW' : null;
 const isTask = (node: ArchiveNode) => node.type === 'dir' && node.date && node.workType;
 const titleFor = (manifest: ArchiveManifest, id: string) => manifest.topics.find((topic) => topic.id === id)?.title ?? id;
+const pluralTasks = (count: number) => `${count} ${count % 10 === 1 && count % 100 !== 11 ? 'задание' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'задания' : 'заданий'}`;
+const taskCountLabel = (cwCount: number, hwCount: number, total: number) => [cwCount ? `CW ${cwCount}` : '', hwCount ? `HW ${hwCount}` : '', `всего ${pluralTasks(total)}`].filter(Boolean).join(' · ');
 
 export default function HierarchyPage({ manifest }: { manifest: ArchiveManifest }) {
   const { year, topicId } = useParams();
@@ -49,14 +51,14 @@ export default function HierarchyPage({ manifest }: { manifest: ArchiveManifest 
     <div className="hierarchy-list">{topicIds.map((id, index) => {
       const subject = nodes.filter((node) => node.topic === id);
       const roots = subject.filter((node) => node.type === 'dir' && node.path.match(/^(?:classwork|homework)-\d{4}\/[^/]+$/));
-      const tasks = subject.filter(isTask);
+      const counts = manifest.topics.find((topic) => topic.id === id)?.periodCounts?.find((item) => item.year === year) ?? { cwCount: 0, hwCount: 0, total: 0 };
       const langs = new Map<string, number>();
       subject.filter((node) => node.type === 'file' && node.language && !['HTML', 'Markdown', 'PDF', 'Image'].includes(node.language)).forEach((node) => langs.set(node.language, (langs.get(node.language) ?? 0) + 1));
       const lang = [...langs].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Документы';
       return <div key={id} className="hierarchy-row">
         <span className="subject-number">{String(index + 1).padStart(2, '0')}</span><Link to={`/y/${year}/${encodeURIComponent(id)}`}><strong>{titleFor(manifest, id)}</strong></Link>
         <span className="path-label" title={roots.map((node) => node.path).join(' · ')}>{roots.map((node) => node.path).join(' · ')}</span>
-        <span>{roots.filter((node) => kindFrom(node) === 'CW').length} CW · {roots.filter((node) => kindFrom(node) === 'HW').length} HW · {tasks.length} заданий</span>
+        <span>{taskCountLabel(counts.cwCount, counts.hwCount, counts.total)}</span>
         {roots[0] ? <a className="language-link" href={roots[0].githubUrl} title="Открыть на GitHub" target="_blank" rel="noreferrer">{lang} ↗</a> : <span>{lang}</span>}
       </div>;
     })}</div>

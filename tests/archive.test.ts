@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { manifestSchema } from '../scripts/manifest-schema.mjs';
 import { classifyTopic, classifyWorkPath, githubPathUrl, latestTaskActivityDate, normalizePath, normalizeTopic, stableId } from '../scripts/manifest-utils.mjs';
 import { renderDiaryTemplate } from '../src/utils/diaryTemplate';
@@ -9,6 +10,7 @@ import { clearVisitHistory, readVisitHistory, recordVisit, VISIT_HISTORY_KEY, ty
 import { sortLatestTasks } from '../src/utils/latestTasks';
 import { DEFAULT_SETTINGS, readSettings, SETTINGS_KEY, writeSettings } from '../src/utils/settings';
 import { highlightMarkdown } from '../src/utils/highlightCode';
+import { detectTaskUnits } from '../scripts/lib/task-detection.mjs';
 
 const topics = YAML.parse(readFileSync('topics.config.yml', 'utf8')).topics.map((topic: { id: string; title: string; aliases: string[] }) => ({
   ...topic,
@@ -22,6 +24,41 @@ describe('manifest', () => {
     const invalid = structuredClone(manifest);
     invalid.nodes[0].type = 'unknown';
     expect(manifestSchema.safeParse(invalid).success).toBe(false);
+  });
+});
+
+describe('subject work counts', () => {
+  function pathsUnder(relative: string) {
+    const directories: string[] = [];
+    const files: string[] = [];
+    const walk = (folder: string) => {
+      for (const entry of readdirSync(folder, { withFileTypes: true })) {
+        const child = path.posix.join(folder.replaceAll('\\', '/'), entry.name);
+        if (entry.isSymbolicLink()) continue;
+        if (entry.isDirectory()) { directories.push(child); walk(child); }
+        else if (entry.isFile()) files.push(child);
+      }
+    };
+    walk(relative);
+    return { directories, files };
+  }
+
+  it.each([
+    ['classwork-2025/дискретная', 1],
+    ['homework-2025/комп сети', 3],
+    ['classwork-2026/base alg', 6],
+    ['homework-2026/system programming', 1],
+  ])('counts real work units for %s', (subject, expected) => {
+    const sourcePath = path.posix.join('content-src', subject);
+    expect(statSync(sourcePath).isDirectory()).toBe(true);
+    const paths = pathsUnder(sourcePath);
+    expect(detectTaskUnits(sourcePath, paths.directories, paths.files)).toHaveLength(expected);
+  });
+
+  it('keeps the generated subject totals equal to the manifest total', () => {
+    const manifest = JSON.parse(readFileSync('public/data/manifest.json', 'utf8'));
+    const sum = manifest.topics.reduce((total: number, topic: { total?: number }) => total + (topic.total ?? 0), 0);
+    expect(manifest.taskSummary.total).toBe(sum);
   });
 });
 

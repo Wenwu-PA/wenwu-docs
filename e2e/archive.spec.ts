@@ -3,12 +3,15 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 
 const manifest = JSON.parse(readFileSync('public/data/manifest.json', 'utf8')) as {
-  nodes: { id: string; name: string; title: string; path: string; type: string; ext: string; contentFile: string | null; previewHtml?: string | null }[];
+  nodes: { id: string; name: string; title: string; path: string; type: string; ext: string; contentFile: string | null; previewHtml?: string | null; notebookFile?: string | null; parentId?: string | null; statement?: string | null; method?: string | null }[];
 };
+const nodeById = new Map(manifest.nodes.map((node) => [node.id, node]));
 const sourceFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.py' && node.contentFile);
 const otherSourceFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.py' && node.contentFile && node.id !== sourceFile?.id);
 const docxFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.docx' && node.previewHtml);
 const csharpFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.cs' && node.path.includes('c#') && node.contentFile);
+const notebookFile = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.ipynb' && node.notebookFile);
+const noConditionFile = manifest.nodes.find((node) => node.type === 'file' && node.contentFile && node.parentId && !nodeById.get(node.parentId)?.statement && !nodeById.get(node.parentId)?.method);
 
 test('home page, search shortcut and topic tree', async ({ page }) => {
   await page.goto('/');
@@ -90,9 +93,18 @@ test('archive and file page stay within target viewports', async ({ page }) => {
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await page.goto(`/#/file/${sourceFile!.id}`);
     await expect(page.getByRole('heading', { name: sourceFile!.name.replace(/\.py$/, '') })).toBeVisible();
-    if (width <= 850) await page.locator('.solution-toolbar button').first().waitFor();
+    if (width <= 1023) await page.locator('.solution-toolbar button').first().waitFor();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   }
+});
+
+test('assignment without a condition uses a single solution column', async ({ page }) => {
+  test.skip(!noConditionFile, 'No source file without a condition in the content repository.');
+  await page.goto(`/#/file/${noConditionFile!.id}`);
+  await expect(page.locator('.assignment-columns--single .solution-panel')).toBeVisible();
+  await expect(page.locator('.assignment-columns--single .statement-panel')).toBeHidden();
+  const columns = await page.locator('.assignment-columns--single').evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+  expect(columns.split(' ').length).toBe(1);
 });
 
 test('periods open subjects and real CW/HW folders', async ({ page }) => {
@@ -112,6 +124,14 @@ test('course number is 03 and year-specific subject pages label the work year', 
   await expect(page.getByRole('heading', { name: /Классная работа 2025 год/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: /Домашняя работа 2025 год/ })).toBeVisible();
   await expect(page.locator('.assignment-path')).not.toContainText('2026');
+});
+
+test('dark theme is applied before the application module hydrates', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('wenwu-settings-v1', JSON.stringify({ version: 1, theme: 'dark', textSize: 'normal', codeSize: 14, wrapCode: false, lineNumbers: true, highlightTheme: 'auto', historyLimit: 20, diaryUrl: '', diaryTemplate: 'Работа: {title}', zipFileName: '{title}.zip' })));
+  await page.route('**/main.tsx*', async (route) => { await new Promise((resolve) => setTimeout(resolve, 10_000)); await route.continue(); });
+  await page.goto('/', { waitUntil: 'commit' });
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
+  await expect.poll(() => page.locator('.boot-fallback').count()).toBe(1);
 });
 
 test('DOCX preview is converted at build time and has the original download', async ({ page }) => {
@@ -173,33 +193,49 @@ test('source previews highlight Python, C#, C++ and SQL with Shiki tokens', asyn
   }
 });
 
+test('Jupyter viewer renders highlighted code and outputs with working cell links', async ({ page }) => {
+  test.skip(!notebookFile, 'No convertible notebook in the content repository.');
+  await page.goto(`/#/file/${notebookFile!.id}`);
+  await expect(page.locator('.notebook-cell').first()).toBeVisible();
+  await expect(page.locator('.notebook-code pre.shiki').first()).toBeVisible();
+  await expect(page.locator('.notebook-code span[style*="color"]').first()).toBeVisible();
+  await page.locator('.notebook-cell-heading a').first().click();
+  await expect(page).toHaveURL(/cell=1/);
+  await expect(page.getByRole('button', { name: 'Копировать весь код' })).toBeVisible();
+});
+
 test('contrast meets WCAG text thresholds on all archive pages, viewport sizes and themes', async ({ context }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(300_000);
   const year = manifest.nodes.find((node) => node.path.match(/^(?:classwork|homework)-(\d{4})\//))?.path.match(/^(?:classwork|homework)-(\d{4})\//)?.[1] ?? '2026';
   const topic = manifest.nodes.find((node) => node.topic)?.topic ?? 'algorithms';
   const py = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.py' && node.contentFile);
   const docx = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.docx' && node.previewHtml);
+  const noCondition = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.py' && node.contentFile && !node.date) ?? py;
+  const pdf = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.pdf' && node.contentFile);
   test.skip(!py || !docx, 'A Python file and converted DOCX preview are needed for the contrast audit.');
-  const viewports = [{ width: 1440, height: 1000 }, { width: 768, height: 1024 }, { width: 390, height: 844 }];
+  const viewports = [{ width: 1440, height: 1000 }, { width: 1024, height: 900 }, { width: 768, height: 1024 }, { width: 390, height: 844 }];
   const { default: AxeBuilder } = await import('@axe-core/playwright');
   const pages = [
-    '/', `/#/y/${year}`, `/#/subject/${encodeURIComponent(topic)}`, `/#/file/${py!.id}`, `/#/file/${docx!.id}`, '/#/?q=algorithm', '/#/settings',
+    '/', `/#/y/${year}`, `/#/subject/${encodeURIComponent(topic)}`, `/#/file/${py!.id}`, `/#/file/${docx!.id}`,
+    ...(notebookFile ? [`/#/file/${notebookFile.id}`] : []), ...(pdf ? [`/#/file/${pdf.id}`] : []),
+    ...(noCondition ? [`/#/file/${noCondition.id}`] : []), '/#/?q=algorithm', '/#/settings',
   ];
   for (const theme of ['light', 'dark']) for (const path of pages) {
     const auditPage = await context.newPage();
-    await auditPage.setViewportSize(viewports[0]);
     await auditPage.addInitScript((selectedTheme) => {
       localStorage.setItem('wenwu-settings-v1', JSON.stringify({ version: 1, theme: selectedTheme, textSize: 'normal', codeSize: 14, wrapCode: false, lineNumbers: true, highlightTheme: 'auto', historyLimit: 20, diaryUrl: '', diaryTemplate: 'Работа: {title}', zipFileName: '{title}.zip' }));
     }, theme);
-    await auditPage.goto(path);
-    if (path === '/') await auditPage.getByRole('heading', { name: 'Периоды' }).waitFor();
-    if (path.includes('?q=')) await auditPage.getByRole('heading', { name: 'Результаты поиска' }).waitFor();
-    if (path.includes(docx!.id)) await auditPage.locator('.office-preview').waitFor();
-    if (path.includes(py!.id)) await auditPage.locator('.solution-code .line').first().waitFor();
-    const result = await new AxeBuilder({ page: auditPage }).withRules(['color-contrast']).analyze();
-    expect(result.violations, `${theme} ${path}`).toEqual([]);
-    for (const viewport of viewports.slice(1)) {
+    for (const viewport of viewports) {
       await auditPage.setViewportSize(viewport);
+      await auditPage.goto(path);
+      if (path === '/') await auditPage.getByRole('heading', { name: 'Периоды' }).waitFor();
+      if (path.includes('?q=')) await auditPage.getByRole('heading', { name: 'Результаты поиска' }).waitFor();
+      if (path.includes(docx!.id)) await auditPage.locator('.office-preview').waitFor();
+      if (path.includes(py!.id) || (noCondition && path.includes(noCondition.id))) await auditPage.locator('.solution-code .line').first().waitFor();
+      if (notebookFile && path.includes(notebookFile.id)) await auditPage.locator('.notebook-cell').first().waitFor();
+      await auditPage.waitForTimeout(220);
+      const result = await new AxeBuilder({ page: auditPage }).withRules(['color-contrast']).analyze();
+      expect(result.violations, `${theme} ${viewport.width}px ${path}`).toEqual([]);
       await expect.poll(() => auditPage.evaluate(() => document.documentElement.scrollWidth), { message: `${theme} ${viewport.width}px ${path}` }).toBeLessThanOrEqual(viewport.width);
     }
     await auditPage.close();

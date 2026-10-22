@@ -19,7 +19,8 @@
     "prelighthouse": "npm run build",
     "lighthouse": "node scripts/run-lighthouse.mjs",
     "precapture:screenshots": "npm run build",
-    "capture:screenshots": "node scripts/capture-screenshots.mjs"
+    "capture:screenshots": "node scripts/capture-screenshots.mjs",
+    "capture:redesign": "npm run manifest && node scripts/capture-redesign.mjs"
   },
   "repository": {
     "type": "git",
@@ -58,6 +59,7 @@
     "codemirror": "^6.0.2",
     "dompurify": "^3.4.16",
     "fflate": "^0.8.3",
+    "katex": "^0.19.0",
     "mammoth": "^1.13.0",
     "markdown-it": "^15.0.2",
     "minisearch": "^7.2.0",

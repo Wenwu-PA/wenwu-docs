@@ -31,20 +31,20 @@ const imports = {
 
 const redIndexLight = {
   name: 'red-index-light', type: 'light' as const,
-  colors: { 'editor.background': '#FAFAF6', 'editor.foreground': '#242421', 'editorLineNumber.foreground': '#62625C' },
+  colors: { 'editor.background': '#FFFFFF', 'editor.foreground': '#15232C', 'editorLineNumber.foreground': '#526775' },
   tokenColors: [
-    { scope: ['keyword', 'storage', 'storage.type'], settings: { foreground: '#B01E1B', fontStyle: 'bold' } },
-    { scope: ['string', 'string.quoted'], settings: { foreground: '#505047' } },
-    { scope: ['constant.numeric', 'constant.language'], settings: { foreground: '#505047' } },
-    { scope: ['comment'], settings: { foreground: '#62625C', fontStyle: 'italic' } },
-    { scope: ['entity.name.function', 'support.function'], settings: { foreground: '#242421' } },
+    { scope: ['keyword', 'storage', 'storage.type'], settings: { foreground: '#8F2725', fontStyle: 'bold' } },
+    { scope: ['string', 'string.quoted'], settings: { foreground: '#375E4A' } },
+    { scope: ['constant.numeric', 'constant.language'], settings: { foreground: '#4A5680' } },
+    { scope: ['comment'], settings: { foreground: '#526775', fontStyle: 'italic' } },
+    { scope: ['entity.name.function', 'support.function'], settings: { foreground: '#15232C' } },
   ],
 };
 const redIndexDark = {
   name: 'red-index-dark', type: 'dark' as const,
-  colors: { 'editor.background': '#242421', 'editor.foreground': '#FAFAF6', 'editorLineNumber.foreground': '#C1C1B8' },
+  colors: { 'editor.background': '#11171D', 'editor.foreground': '#EDF2F5', 'editorLineNumber.foreground': '#A0AFBA' },
   tokenColors: [
-    { scope: ['keyword', 'storage', 'storage.type'], settings: { foreground: '#FF7772', fontStyle: 'bold' } },
+    { scope: ['keyword', 'storage', 'storage.type'], settings: { foreground: '#E99591', fontStyle: 'bold' } },
     { scope: ['string', 'string.quoted'], settings: { foreground: '#E8E8DE' } },
     { scope: ['constant.numeric', 'constant.language'], settings: { foreground: '#E8E8DE' } },
     { scope: ['comment'], settings: { foreground: '#C1C1B8', fontStyle: 'italic' } },

@@ -1,23 +1,22 @@
 :root {
   color-scheme: light;
-  --red: #D52A27;
-  --red-ink: #B01E1B;
-  --red-hover: #B92220;
-  --paper: #FAFAF6;
-  --surface: #FFFFFF;
-  --ink: #242421;
-  --muted: #73736C;
-  --line: #DDDDD5;
-  --success: #236B45;
-  --success-soft: #E8F2EB;
-  --error: #A32925;
-  --error-soft: #FAE8E7;
-  --focus: #D52A27;
-  --disabled: #A9A9A2;
-  --backdrop: rgb(36 36 33 / 45%);
+  --red: #b8ddf0;
+  --red-ink: #1d5068;
+  --red-hover: #143c50;
+  --paper: #f3f6f8;
+  --surface: #ffffff;
+  --ink: #15232c;
+  --muted: #526775;
+  --line: #c3d0d8;
+  --success: #246548;
+  --success-soft: #e7f1eb;
+  --error: #9c2928;
+  --error-soft: #f8e9e8;
+  --focus: #276d8c;
+  --disabled: #687680;
+  --backdrop: rgb(15 27 35 / 55%);
   --text-scale: 1;
   --code-font-size: 14px;
-
   --font-sans: 'IBM Plex Sans', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
   --text-xs: 12px;
@@ -35,7 +34,6 @@
   --leading-tight: 1.15;
   --leading-normal: 1.25;
   --leading-copy: 1.45;
-
   --space-1: 8px;
   --space-2: 16px;
   --space-3: 24px;
@@ -50,7 +48,6 @@
   --header-height: 96px;
   --hero-height: 350px;
   --mobile-inset: 24px;
-
   --radius: 0;
   --shadow: none;
   --z-base: 0;
@@ -63,19 +60,21 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #242421;
-  --surface: #30302C;
-  --ink: #FAFAF6;
-  --muted: #C1C1B8;
-  --line: #565650;
-  --red-ink: #FF7772;
-  --success: #8BD0A5;
-  --success-soft: #25372C;
-  --error: #FF8B84;
-  --error-soft: #472B29;
-  --focus: #FF7772;
-  --disabled: #999991;
-  --backdrop: rgb(0 0 0 / 65%);
+  --paper: #11171d;
+  --surface: #19232c;
+  --ink: #edf2f5;
+  --muted: #a0afba;
+  --line: #34434f;
+  --red: #b8ddf0;
+  --red-ink: #b8ddf0;
+  --red-hover: #d1ebf6;
+  --success: #8bd0a5;
+  --success-soft: #25372c;
+  --error: #ff8b84;
+  --error-soft: #472b29;
+  --focus: #b8ddf0;
+  --disabled: #a0afba;
+  --backdrop: rgb(0 0 0 / 70%);
 }
 
 @media (max-width: 720px) {

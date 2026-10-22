@@ -4,20 +4,21 @@ import type MiniSearch from 'minisearch';
 import type { ArchiveManifest, ArchiveNode } from '../types';
 import { useVisitHistory } from '../hooks/useVisitHistory';
 import { sortLatestTasks } from '../utils/latestTasks';
+import { clearVisitHistory } from '../utils/visitHistory';
 
 type SearchResult = { id: string; score: number };
 let indexPromise: { buildId: string; promise: Promise<InstanceType<typeof MiniSearch>> } | null = null;
 const codeLanguages = new Set(['C', 'C/C++', 'C++', 'C#', 'Python', 'JavaScript', 'TypeScript', 'HTML', 'CSS', 'SQL', 'Java', 'Kotlin', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift']);
 const sourceLanguages = new Set(['C', 'C/C++', 'C++', 'C#', 'Python', 'JavaScript', 'TypeScript', 'SQL', 'Java', 'Kotlin', 'Go', 'Rust', 'PHP', 'Ruby', 'Swift']);
 
-function nodeLabel(node: ArchiveNode, nodes: ArchiveNode[]) {
+function nodeLabel(node: ArchiveNode, nodes: ArchiveNode[], topics: ArchiveManifest['topics']) {
   if (!node.date) return node.title;
   const children = nodes.filter((candidate) => candidate.type === 'file' && candidate.path.startsWith(`${node.path}/`));
-  const candidate = children.find((item) => !['main', 'index', 'readme'].includes(item.title.toLowerCase())) ?? children[0];
-  if (node.title !== node.name) return node.title;
-  if (candidate && !['main', 'index', 'readme'].includes(candidate.title.toLowerCase())) return candidate.title;
-  const statementTitle = node.statement?.match(/^#\s+(.+)$/m)?.[1];
-  return statementTitle || 'Задание';
+  const candidate = children.find((item) => !['main', 'index', 'readme', 'solution'].includes(item.title.toLowerCase()));
+  const taskTitle = node.title !== node.name ? node.title : candidate?.title ?? node.name;
+  const topic = topics.find((item) => item.id === node.topic)?.title ?? 'Архив';
+  if (!taskTitle || ['main', 'index', 'readme', 'solution'].includes(taskTitle.toLowerCase())) return `${topic} — ${node.name}`;
+  return `${topic} — ${taskTitle}`;
 }
 
 function displayDate(date: string | null) {
@@ -26,6 +27,46 @@ function displayDate(date: string | null) {
   if (isoDate) return `${isoDate[3]}.${isoDate[2]}.${isoDate[1].slice(-2)}`;
   const parts = date.split(/[.-]/);
   return parts.length === 3 ? `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[2].slice(-2)}` : date;
+}
+
+function visitTitle(visit: { id: string; title: string; path: string }, nodes: ArchiveNode[], topics: ArchiveManifest['topics']) {
+  const node = nodes.find((item) => item.id === visit.id);
+  if (!node) return visit.title;
+  const parent = nodes.find((item) => item.id === node.parentId);
+  const fileTitle = ['index', 'main', 'readme', 'solution'].includes(node.title.toLowerCase());
+  const task = node.date ? node : parent?.date ? parent : null;
+  if (!fileTitle && node.title !== node.name) return node.title;
+  if (task) return nodeLabel(task, nodes, topics);
+  return parent?.title || node.title || node.name;
+}
+
+function visitPath(visit: { id: string; path: string }, nodes: ArchiveNode[], topics: ArchiveManifest['topics']) {
+  const parts = visit.path.split('/').filter(Boolean);
+  const year = parts[0]?.match(/^(?:classwork|homework)-(\d{4})$/)?.[1];
+  const node = nodes.find((item) => item.id === visit.id);
+  const topic = topics.find((item) => item.id === node?.topic);
+  const crumbs = [topic?.title ?? parts[1], ...parts.slice(2)].filter(Boolean);
+  if (year && crumbs.length > 1) crumbs.splice(1, 0, year);
+  return crumbs.join(' / ');
+}
+
+function relativeVisitTime(timestamp: number) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  if (day === today) return `сегодня, ${time}`;
+  if (day === today - 86_400_000) return 'вчера';
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
+}
+
+function countsForYear(topics: ArchiveManifest['topics'], year: string) {
+  return topics.reduce((summary, topic) => {
+    const period = topic.periodCounts?.find((item) => item.year === year);
+    if (period) { summary.tasks += period.total; summary.files += period.fileCount ?? 0; }
+    return summary;
+  }, { tasks: 0, files: 0 });
 }
 
 function semesterFor(date: string | null) {
@@ -117,7 +158,7 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
 
   return <>
     <section className="hero" aria-labelledby="hero-title">
-      <div className="hero-copy"><p className="eyebrow hero-eyebrow">IT-TOP_ACADEMY / WENWU-PA</p><div className="hero-red-panel"><h1 id="hero-title">{manifest.site?.heroTitle ?? 'Код. Практика.'}<br />{manifest.site?.heroTitleSecond ?? 'Всё по порядку.'}</h1><span className="hero-count" aria-label={`Курс ${String(manifest.site?.course ?? 3).padStart(2, '0')}`}>[ {String(manifest.site?.course ?? 3).padStart(2, '0')} ]</span></div><p className="hero-tagline">{manifest.site?.tagline ?? 'Учебные задания, решения и проекты по разработке ПО.'}</p></div>
+      <div className="hero-copy"><p className="eyebrow hero-eyebrow">IT-TOP_ACADEMY / WENWU-PA</p><div className="hero-red-panel"><h1 id="hero-title">{manifest.site?.heroTitle ?? 'Код. Практика.'}<br />{manifest.site?.heroTitleSecond ?? 'Всё по порядку.'}</h1><span className="hero-count" aria-label={`Курс ${String(manifest.site?.course ?? 3).padStart(2, '0')}`}>[ {String(manifest.site?.course ?? 3).padStart(2, '0')} ]</span></div><p className="hero-tagline">{manifest.site?.tagline ?? 'Учебные задания, решения и проекты по разработке ПО.'}</p><p className="hero-stats">{manifest.taskSummary?.total ?? 0} заданий · {manifest.taskSummary?.fileCount ?? 0} файлов</p></div>
       <div className="hero-stamp"><span className="eyebrow">КУРС / {(manifest.site?.courseLabel ?? 'РАЗРАБОТКА ПО').toLocaleUpperCase('ru')}</span><p>{manifest.site?.heroNote ?? 'От первой строки\nдо рабочего проекта.'}</p></div>
     </section>
     <main id="main" className="archive-layout">
@@ -128,9 +169,9 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
         <nav className="topic-nav" aria-label="Периоды">
           {periods.map((year) => <details key={year}><summary><Link to={`/y/${year}`}>{year}</Link></summary><div className="period-topic-nav">{manifest.topics.filter((topic) => manifest.nodes.some((node) => node.topic === topic.id && node.path.startsWith(`classwork-${year}/`) || node.topic === topic.id && node.path.startsWith(`homework-${year}/`))).map((topic) => <Link key={topic.id} to={`/y/${year}/${encodeURIComponent(topic.id)}`}>{topic.title}</Link>)}</div></details>)}
         </nav>
-        <section className="recent-sidebar" aria-label="Недавно открытые задания">
+          <section className="recent-sidebar" aria-label="Недавно открытые задания">
           <p className="eyebrow">НЕДАВНО ОТКРЫТЫЕ</p>
-          {recentVisits.length ? recentVisits.slice(0, 5).map((visit) => <Link key={visit.id} to={`/file/${visit.id}`}>{visit.title}</Link>) : <span className="path-label">Открытых работ пока нет</span>}
+          {recentVisits.length ? recentVisits.slice(0, 5).map((visit) => <Link key={visit.id} to={`/file/${visit.id}`}>{visitTitle(visit, manifest.nodes, manifest.topics)}</Link>) : <span className="path-label">Открытых работ пока нет</span>}
         </section>
         <div className="sidebar-divider" />
         <p className="eyebrow">ПЕРИОД</p>
@@ -147,9 +188,9 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
           <section id="periods" className="subjects-section"><h2>Периоды</h2><div className="period-list">{periods.map((year) => {
             const yearNodes = manifest.nodes.filter((node) => node.path.startsWith(`classwork-${year}/`) || node.path.startsWith(`homework-${year}/`));
             const subjects = new Set(yearNodes.map((node) => node.topic).filter((topic): topic is string => Boolean(topic)));
-            const tasks = yearNodes.filter((node) => node.type === 'dir' && node.date && node.workType);
+            const summary = countsForYear(manifest.topics, year);
             const latestDate = yearNodes.map((node) => node.activityDate).filter((date): date is string => Boolean(date)).sort().at(-1) ?? null;
-            return <Link key={year} className="period-card" to={`/y/${year}`}><span className="subject-number">{year}</span><strong>{subjects.size} предметов</strong><span>{tasks.length} заданий · {yearNodes.filter((node) => node.type === 'file').length} файлов</span><span className="path-label">Обновлено {displayDate(latestDate)}</span></Link>;
+            return <Link key={year} className="period-card" to={`/y/${year}`}><span className="subject-number">{year}</span><strong>{subjects.size} предметов</strong><span>{summary.tasks} заданий · {summary.files} файлов</span><span className="path-label">Обновлено {displayDate(latestDate)}</span></Link>;
           })}</div></section>
           <section id="subjects" className="subjects-section"><h2>Все предметы</h2><div className="subject-list">{visibleTopics.map((topic, index) => {
             const topicNodes = manifest.nodes.filter((node) => node.topic === topic.id && node.type === 'file');
@@ -165,8 +206,8 @@ export default function ArchivePage({ manifest }: { manifest: ArchiveManifest })
             </div>;
           })}</div></section>
           <Link className="tree-link" to="/tree">Открыть дерево файлов →</Link>
-          <section id="assignments" className="latest-section"><h2>Последние задания</h2><div className="latest-list">{latest.map((node) => <Link className="latest-row" key={node.id} to={`/file/${node.id}`}><span className="date-label">{displayDate(node.activityDate ?? node.date)}</span><span className="latest-title">{nodeLabel(node, manifest.nodes)}</span><span className="work-label">{node.workType}</span><span className="latest-language">{manifest.nodes.find((item) => item.type === 'file' && item.path.startsWith(`${node.path}/`) && codeLanguages.has(item.language))?.language ?? 'Документы'}</span></Link>)}</div></section>
-          <section className="recent-section"><h2>Недавно открытые</h2>{recentVisits.length ? <div className="latest-list">{recentVisits.slice(0, 5).map((visit) => <Link className="latest-row recent-row" key={visit.id} to={`/file/${visit.id}`}><time className="date-label" dateTime={new Date(visit.visitedAt).toISOString()}>{new Date(visit.visitedAt).toLocaleString('ru-RU')}</time><span className="latest-title">{visit.title}</span><span className="path-label">{visit.path}</span></Link>)}</div> : <p className="path-label">Открытые страницы заданий появятся здесь.</p>}</section>
+            <section id="assignments" className="latest-section"><h2>Последние задания</h2><div className="latest-list">{latest.map((node) => <Link className="latest-row" key={node.id} to={`/file/${node.id}`}><span className="date-label">{displayDate(node.activityDate ?? node.date)}</span><span className="latest-title">{nodeLabel(node, manifest.nodes, manifest.topics)}</span><span className="work-label">{node.workType}</span><span className="latest-language">{manifest.nodes.find((item) => item.type === 'file' && item.path.startsWith(`${node.path}/`) && codeLanguages.has(item.language))?.language ?? 'Документы'}</span></Link>)}</div></section>
+          <section className="recent-section"><div className="recent-heading"><h2>Недавно открытые</h2><div className="recent-heading-actions"><Link to="/settings">Все</Link>{recentVisits.length > 0 && <button type="button" onClick={() => { if (window.confirm(`Очистить историю посещений (${recentVisits.length} записей)?`)) clearVisitHistory(); }}>Очистить</button>}</div></div>{recentVisits.length ? <div className="latest-list">{recentVisits.slice(0, 5).map((visit) => { const node = data.get(visit.id); const typeLabel = node?.workType ?? (node?.type === 'file' ? 'ФАЙЛ' : 'АРХИВ'); const language = node?.language || node?.ext.slice(1).toUpperCase() || ''; return <Link className="latest-row recent-row" key={visit.id} to={`/file/${visit.id}`}><time className="date-label" dateTime={new Date(visit.visitedAt).toISOString()} title={new Date(visit.visitedAt).toLocaleString('ru-RU')}>{relativeVisitTime(visit.visitedAt)}</time><span className="recent-copy"><strong className="latest-title">{visitTitle(visit, manifest.nodes, manifest.topics)}</strong><span className="recent-breadcrumbs" title={visit.path}>{visitPath(visit, manifest.nodes, manifest.topics)}</span></span><span className="work-label">{typeLabel}</span><span className="latest-language">{language}</span></Link>; })}</div> : <p className="path-label">Открытые страницы заданий появятся здесь.</p>}</section>
           {selectedTopic && <section className="all-topic-files"><h2>{manifest.topics.find((item) => item.id === selectedTopic)?.title}</h2>{manifest.nodes.filter((node) => node.topic === selectedTopic && node.type === 'file').slice(0, 40).map((node) => <SearchRow key={node.id} node={node} />)}</section>}
         </>}
       </section>

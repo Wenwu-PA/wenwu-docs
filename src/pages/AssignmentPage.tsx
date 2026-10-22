@@ -9,6 +9,7 @@ import PdfPreview from './PdfPreview';
 import { recordVisit } from '../utils/visitHistory';
 import { useSettings } from '../contexts/SettingsContext';
 import { languageForExtension, escapeHtml } from '../utils/highlightCode';
+import NotebookView, { type NotebookDocument } from './NotebookView';
 
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true });
 markdown.renderer.rules.link_open = (tokens, index, options, _env, renderer) => {
@@ -45,6 +46,7 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
   const previous = siblingIndex > 0 ? siblings[siblingIndex - 1] : undefined;
   const next = siblingIndex >= 0 ? siblings[siblingIndex + 1] : undefined;
   const [preview, setPreview] = useState({ nodeId: '', source: '', error: false });
+  const [notebook, setNotebook] = useState<{ nodeId: string; document: NotebookDocument | null; error: boolean }>({ nodeId: '', document: null, error: false });
   const source = preview.nodeId === nodeId ? preview.source : '';
   const error = preview.nodeId === nodeId && preview.error;
   const [highlight, setHighlight] = useState({ nodeId: '', source: '', html: '' });
@@ -79,12 +81,22 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
   }, [navigate, next, parent, previous]);
 
   useEffect(() => {
-    if (!node || node.type !== 'file' || (!node.previewHtml && (!node.contentFile || node.ext === '.pdf'))) return;
+    if (!node || node.type !== 'file' || node.ext === '.ipynb' || (!node.previewHtml && (!node.contentFile || node.ext === '.pdf'))) return;
     let active = true;
     const url = node.previewHtml ? `${import.meta.env.BASE_URL}${node.previewHtml.replace(/^\//, '')}` : previewUrl(node)!;
     fetch(url).then((response) => { if (!response.ok) throw new Error('File unavailable'); return response.text(); })
       .then((content) => { if (active) setPreview({ nodeId: node.id, source: content, error: false }); })
       .catch(() => { if (active) setPreview({ nodeId: node.id, source: '', error: true }); });
+    return () => { active = false; };
+  }, [node]);
+
+  useEffect(() => {
+    if (!node || node.type !== 'file' || node.ext !== '.ipynb' || !node.notebookFile) return;
+    let active = true;
+    fetch(`${import.meta.env.BASE_URL}${node.notebookFile.replace(/^\//, '')}`)
+      .then((response) => { if (!response.ok) throw new Error('Notebook unavailable'); return response.json() as Promise<NotebookDocument>; })
+      .then((document) => { if (active) setNotebook({ nodeId: node.id, document, error: false }); })
+      .catch(() => { if (active) setNotebook({ nodeId: node.id, document: null, error: true }); });
     return () => { active = false; };
   }, [node]);
 
@@ -167,7 +179,9 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
   if (!node) return <main id="main" className="assignment-page"><h1>Материал не найден</h1><Link className="text-link" to="/">Вернуться в архив</Link></main>;
 
   const title = node.title || node.name;
-  const workLabel = node.workType === 'HW' ? 'Домашняя работа' : node.workType === 'CW' ? 'Классная работа' : 'Материал архива';
+  const genericFileNames = ['index', 'main', 'readme', 'solution'];
+  const pageTitle = node.type === 'file' && genericFileNames.includes(node.title.toLowerCase()) && parent?.date ? parent.title || parent.name : title;
+  const workLabel = node.workType === 'HW' ? 'Домашняя работа' : node.workType === 'CW' ? 'Классная работа' : node.ext === '.ipynb' ? 'Jupyter-ноутбук' : node.ext === '.docx' ? 'Документ DOCX' : node.ext === '.pdf' ? 'PDF-документ' : codeLanguages[node.ext] ? `${codeLanguages[node.ext]}-скрипт` : node.ext ? `Файл ${node.ext.slice(1).toUpperCase()}` : 'Папка материалов';
   const directoryFiles = children.filter((item) => item.type === 'file');
   const solutionFile = directoryFiles.find((item) => item.ext !== '.md' && item.ext !== '.txt') ?? directoryFiles[0];
   const statementNode = node.type === 'file' ? parent : node;
@@ -175,6 +189,8 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
   const isMarkdown = node.ext === '.md' || node.ext === '.markdown';
   const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(node.ext);
   const isPdf = node.ext === '.pdf';
+  const hasCondition = Boolean(statement || node.method);
+  const isNotebook = node.ext === '.ipynb';
   const isOfficePreview = Boolean(node.previewHtml);
   const isText = Boolean(codeLanguages[node.ext]) || ['.txt', '.csv', '.log'].includes(node.ext) || Boolean(node.contentFile && !binaryExtensions.has(node.ext) && !node.previewHtml);
   const canEdit = node.type === 'file'
@@ -220,7 +236,7 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
   return <main id="main" className="assignment-page">
     <p className="breadcrumbs"><Link to="/">АРХИВ</Link>{breadcrumbItems}{node.workType ? ` / ${node.workType}` : ''}</p>
     <Link className="back-link" to={parent ? `/file/${parent.id}` : '/'} state={{ restore: true }}>← {parent?.title ?? 'Архив'}</Link>
-    <h1 className="assignment-heading">{title}</h1>
+    <h1 className="assignment-heading">{pageTitle}</h1>
     <div className="assignment-meta">
       <span className="assignment-language">{node.language || node.workType || (node.type === 'dir' ? 'ПАПКА' : node.ext.slice(1).toUpperCase())}</span>
       {statusLabel && <span className="status-label">{statusLabel}</span>}
@@ -232,16 +248,16 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
     </div>
     <hr className="assignment-rule" />
     {node.type === 'dir' ? <>
-      <div className="assignment-columns">
+      <div className={`assignment-columns${hasCondition ? '' : ' assignment-columns--single'}`}>
         <section className="statement-panel"><span className="section-label">01 / {statement ? 'УСЛОВИЕ' : 'ПАПКА'}</span><h2>{statement ? title : 'Материалы раздела'}</h2>{statement && <div className="markdown-view highlighted-document" dangerouslySetInnerHTML={{ __html: richStatement.nodeId === nodeId && richStatement.source === statement ? richStatement.html : DOMPurify.sanitize(markdown.render(statement)) }} />}{node.method && <><span className="eyebrow">МЕТОД</span><p>{node.method}</p></>}</section>
         <section className="solution-panel"><div className="solution-header"><span className="section-label">02 / ФАЙЛЫ</span><div className="solution-toolbar">{canEdit && <Link to={`/edit/${solutionFile?.id ?? node.id}`}>Редактировать</Link>}<button onClick={() => setDiaryOpen(true)}>В дневник</button></div></div><DirectoryListing items={children} /></section>
       </div>
     </> : <>
-      <div className="assignment-columns">
+      <div className={`assignment-columns${hasCondition ? '' : ' assignment-columns--single'}`}>
         <section className="statement-panel"><span className="section-label">01 / {statement ? 'УСЛОВИЕ' : 'АРХИВ'}</span>{statement && <><h2>{statementNode?.title ?? title}</h2><div className="markdown-view highlighted-document" dangerouslySetInnerHTML={{ __html: richStatement.nodeId === nodeId && richStatement.source === statement ? richStatement.html : DOMPurify.sanitize(markdown.render(statement)) }} /></>}{node.method && <><span className="eyebrow">МЕТОД</span><p>{node.method}</p></>}<span className="eyebrow">ФАЙЛ / {node.size.toLocaleString('ru-RU')} Б · {node.lines ?? '—'} СТРОК</span></section>
         <section className="solution-panel" aria-label="Содержимое файла">
           <div className="solution-header"><span className="section-label">02 / РЕШЕНИЕ</span><span className="solution-name">{node.name}</span><div className="solution-toolbar">{isText && <button onClick={copyCode}>{copied ? 'Скопировано' : 'Копировать код'}</button>}<button aria-pressed={settings.wrapCode} onClick={() => update('wrapCode', !settings.wrapCode)}>{settings.wrapCode ? 'Без переноса' : 'Перенос строк'}</button><button onClick={copyLink}>Ссылка</button><Link to={`/edit/${node.id}`}>Редактировать</Link><button onClick={() => setDiaryOpen(true)}>В дневник</button></div></div>
-          {node.conversionError ? <p className="message-error">Не удалось преобразовать файл для просмотра. <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : isPdf ? <PdfPreview url={contentUrl ?? node.rawUrl ?? node.githubUrl} /> : !node.contentFile && !node.previewHtml ? <p>Просмотр недоступен для этого формата или размера файла. <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : error ? <p role="alert">Не удалось загрузить файл. <a href={node.githubUrl}>Открыть на GitHub ↗</a></p> : !source ? <p>Загружаю файл…</p> : isOfficePreview ? <div className="markdown-view office-preview highlighted-document" dangerouslySetInnerHTML={{ __html: richPreview.nodeId === nodeId && richPreview.source === source ? richPreview.html : DOMPurify.sanitize(source, { USE_PROFILES: { html: true } }) }} /> : isMarkdown ? <div className="markdown-view highlighted-document" dangerouslySetInnerHTML={{ __html: richPreview.nodeId === nodeId && richPreview.source === source ? richPreview.html : DOMPurify.sanitize(markdown.render(source)) }} /> : isImage ? <img className="solution-image" src={contentUrl ?? ''} alt={node.name} /> : isText ? <pre className={`solution-code${settings.wrapCode ? ' solution-code--wrap' : ''}`} tabIndex={0} aria-label={`Код файла ${node.name}`} onClick={setLineLink} onKeyDown={(event) => { if (event.key === 'Enter') setLineLink(event); }} title="Нажмите на строку, Shift + нажатие задаёт диапазон ссылки">{highlighted ? <code dangerouslySetInnerHTML={{ __html: highlighted }} /> : <code>{source}</code>}</pre> : <p>Просмотр недоступен для этого формата. Скачайте файл или откройте его на GitHub.</p>}
+          {isNotebook ? (notebook.document && notebook.nodeId === nodeId ? <NotebookView notebook={notebook.document} theme={activeCodeTheme} nodeId={nodeId} contentUrl={contentUrl ?? node.rawUrl ?? node.githubUrl} githubUrl={node.githubUrl} rawUrl={node.rawUrl} /> : node.conversionError ? <p className="message-error">{node.conversionError} <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : notebook.error ? <p role="alert">Не удалось загрузить ноутбук. <a href={node.githubUrl}>Открыть в GitHub ↗</a></p> : <p>Загружаю ноутбук…</p>) : node.conversionError ? <p className="message-error">Не удалось преобразовать файл для просмотра. <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : isPdf ? <PdfPreview url={contentUrl ?? node.rawUrl ?? node.githubUrl} /> : !node.contentFile && !node.previewHtml ? <p>Просмотр недоступен для этого формата или размера файла. <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : error ? <p role="alert">Не удалось загрузить файл. <a href={node.githubUrl}>Открыть на GitHub ↗</a></p> : !source ? <p>Загружаю файл…</p> : isOfficePreview ? <div className="markdown-view office-preview highlighted-document" dangerouslySetInnerHTML={{ __html: richPreview.nodeId === nodeId && richPreview.source === source ? richPreview.html : DOMPurify.sanitize(source, { USE_PROFILES: { html: true } }) }} /> : isMarkdown ? <div className="markdown-view highlighted-document" dangerouslySetInnerHTML={{ __html: richPreview.nodeId === nodeId && richPreview.source === source ? richPreview.html : DOMPurify.sanitize(markdown.render(source)) }} /> : isImage ? <img className="solution-image" src={contentUrl ?? ''} alt={node.name} /> : isText ? <pre className={`solution-code${settings.wrapCode ? ' solution-code--wrap' : ''}`} tabIndex={0} aria-label={`Код файла ${node.name}`} onClick={setLineLink} onKeyDown={(event) => { if (event.key === 'Enter') setLineLink(event); }} title="Нажмите на строку, Shift + нажатие задаёт диапазон ссылки">{highlighted ? <code dangerouslySetInnerHTML={{ __html: highlighted }} /> : <code>{source}</code>}</pre> : <p>Просмотр недоступен для этого формата. Скачайте файл или откройте его на GitHub.</p>}
         </section>
       </div>
       {solutionFile && <Link className="next-assignment" to={`/file/${solutionFile.id}`}>Открыть файл решения → {solutionFile.name}</Link>}

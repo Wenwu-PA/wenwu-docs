@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#FAFAF6" />
+    <meta name="theme-color" content="#FAFAF6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#11171D" media="(prefers-color-scheme: dark)" />
     <meta name="description" content="Неофициальный личный архив учебных работ Wenwu. Код, практика, всё по порядку." />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'self'; base-uri 'self'; form-action 'self'" />
     <meta property="og:title" content="Wenwu — Учебный архив" />
@@ -11,11 +12,19 @@
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://wenwu-pa.github.io/wenwu-docs/brand/og-image.svg" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%brand/w-mark.svg" />
+    <style>
+      html { color-scheme: light; --boot-bg: #FAFAF6; --boot-text: #242421; }
+      html[data-theme="dark"] { color-scheme: dark; --boot-bg: #11171D; --boot-text: #EDF2F5; }
+      html, body, #root { min-height: 100%; background: var(--boot-bg); color: var(--boot-text); }
+      .boot-fallback { min-height: 100vh; display: grid; place-items: center; background: var(--boot-bg); color: var(--boot-text); font: 700 28px/1 'IBM Plex Mono', monospace; }
+      html[data-theme="dark"] .boot-fallback { color: #B8DDF0; }
+    </style>
+    <script src="/theme-init.js"></script>
     <title>Wenwu — Учебный архив</title>
   </head>
   <body>
     <a class="skip-link" href="#main">Перейти к содержимому</a>
-    <div id="root"></div>
+    <div id="root"><div class="boot-fallback" aria-hidden="true">[W]</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
