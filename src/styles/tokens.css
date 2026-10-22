@@ -1,6 +1,7 @@
 :root {
   color-scheme: light;
   --red: #D52A27;
+  --red-ink: #B01E1B;
   --red-hover: #B92220;
   --paper: #FAFAF6;
   --surface: #FFFFFF;
@@ -14,6 +15,8 @@
   --focus: #D52A27;
   --disabled: #A9A9A2;
   --backdrop: rgb(36 36 33 / 45%);
+  --text-scale: 1;
+  --code-font-size: 14px;
 
   --font-sans: 'IBM Plex Sans', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
@@ -56,6 +59,23 @@
   --z-dialog: 30;
   --duration-fast: 150ms;
   --duration-normal: 200ms;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #242421;
+  --surface: #30302C;
+  --ink: #FAFAF6;
+  --muted: #C1C1B8;
+  --line: #565650;
+  --red-ink: #FF7772;
+  --success: #8BD0A5;
+  --success-soft: #25372C;
+  --error: #FF8B84;
+  --error-soft: #472B29;
+  --focus: #FF7772;
+  --disabled: #999991;
+  --backdrop: rgb(0 0 0 / 65%);
 }
 
 @media (max-width: 720px) {

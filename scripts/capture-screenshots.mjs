@@ -30,6 +30,7 @@ try {
     })[0];
   if (!task) throw new Error('No previewable dated homework/classwork file was found.');
   await mkdir('docs/screenshots', { recursive: true });
+  await mkdir('docs/screenshots/after', { recursive: true });
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
@@ -47,9 +48,16 @@ try {
       await page.goto(baseUrl, { waitUntil: 'networkidle' });
       await page.getByRole('heading', { name: 'Периоды' }).waitFor();
       await page.screenshot({ path: path.join('docs/screenshots', `archive-${label}.png`), fullPage: true });
+      if (label === '1440') await page.locator('.hero').screenshot({ path: 'docs/screenshots/after/hero.png' });
       await page.goto(`${baseUrl}#/file/${task.id}`, { waitUntil: 'networkidle' });
       await page.getByRole('heading', { name: task.title }).waitFor();
       await page.screenshot({ path: path.join('docs/screenshots', `assignment-${label}.png`), fullPage: true });
+      if (label === '1440') await page.screenshot({ path: 'docs/screenshots/after/assignment.png', fullPage: true });
+      await page.evaluate(() => { globalThis.localStorage.removeItem('wenwu-recent-visits-v1'); globalThis.dispatchEvent(new Event('wenwu:visit-history-change')); });
+      await page.goto(`${baseUrl}#/settings`, { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'Настройки' }).waitFor();
+      await page.screenshot({ path: path.join('docs/screenshots', `settings-${label}.png`), fullPage: true });
+      if (label === '1440') await page.screenshot({ path: 'docs/screenshots/after/settings.png', fullPage: true });
       console.log(`Captured archive and assignment at ${width}×${height}.`);
     }
   } finally {

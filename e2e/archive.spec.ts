@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 
 const manifest = JSON.parse(readFileSync('public/data/manifest.json', 'utf8')) as {
   nodes: { id: string; name: string; title: string; path: string; type: string; ext: string; contentFile: string | null; previewHtml?: string | null }[];
@@ -52,8 +53,10 @@ test('recently opened work appears on the home page and can be cleared in settin
   await page.goBack();
   await expect(page.locator(`.recent-section a[href$="/file/${sourceFile!.id}"]`)).toBeVisible();
   await expect(page.locator(`.recent-sidebar a[href$="/file/${sourceFile!.id}"]`)).toBeVisible();
-  await page.getByRole('button', { name: 'Настройки' }).click();
-  await page.getByRole('dialog', { name: 'Настройки' }).getByRole('button', { name: 'Очистить историю посещений' }).click();
+  await page.getByRole('link', { name: 'Настройки' }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: /Очистить историю посещений/ }).click();
+  await page.getByRole('link', { name: '← Вернуться в архив' }).click();
   await expect(page.locator('.recent-section')).toContainText('Открытые страницы заданий появятся здесь.');
   await expect(page.locator('.recent-sidebar')).toContainText('Открытых работ пока нет');
 });
@@ -87,6 +90,7 @@ test('archive and file page stay within target viewports', async ({ page }) => {
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await page.goto(`/#/file/${sourceFile!.id}`);
     await expect(page.getByRole('heading', { name: sourceFile!.name.replace(/\.py$/, '') })).toBeVisible();
+    if (width <= 850) await page.locator('.solution-toolbar button').first().waitFor();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   }
 });
@@ -121,4 +125,83 @@ test('preview assets work for repository paths containing #', async ({ page }) =
   test.skip(!csharpFile, 'No C# file under a # path in the content repository.');
   await page.goto(`/#/file/${csharpFile!.id}`);
   await expect(page.locator('.solution-code')).toContainText('using System');
+});
+
+test('settings page exposes appearance, local data, diary and project sections', async ({ page }) => {
+  await page.goto('/#/settings');
+  await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
+  for (const title of ['Внешний вид', 'Навигация и история', 'Дневник', 'Данные', 'О проекте'])
+    await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  await expect(page.getByLabel('Тема')).toHaveValue('system');
+  await page.getByLabel('Размер текста').selectOption('large');
+  await expect.poll(() => page.locator('html').evaluate((el) => getComputedStyle(el).getPropertyValue('--text-scale').trim())).toBe('1.125');
+  await expect(page.getByLabel('Шаблон записи')).toHaveValue(/\{githubUrl\}/);
+});
+
+test('settings exports and imports local data as one JSON file', async ({ page }) => {
+  await page.goto('/#/settings');
+  await page.evaluate(() => {
+    localStorage.setItem('wenwu-draft:export-check', 'saved draft');
+    localStorage.setItem('wenwu-diary-log-v1', JSON.stringify([{ id: 'one', status: 'prepared' }]));
+  });
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Экспортировать JSON' }).click();
+  const download = await downloadPromise;
+  const exported = JSON.parse(await readFile(await download.path() ?? '', 'utf8')) as { format: string; data: Record<string, string> };
+  expect(exported.format).toBe('wenwu-local-data');
+  expect(exported.data['wenwu-draft:export-check']).toBe('saved draft');
+  expect(exported.data['wenwu-diary-log-v1']).toContain('prepared');
+
+  const settings = { version: 1, theme: 'dark', historyLimit: 50, textSize: 'normal', codeSize: 14, wrapCode: false, lineNumbers: true, highlightTheme: 'auto', diaryUrl: '', diaryTemplate: 'Imported {title}', zipFileName: '{title}.zip' };
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'archive-backup.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ format: 'wenwu-local-data', version: 1, data: { 'wenwu-settings-v1': JSON.stringify(settings), 'wenwu-draft:restored': 'restored draft', 'wenwu-diary-log-v1': '[]' } })),
+  });
+  await expect(page.getByRole('heading', { name: 'Настройки' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('wenwu-draft:restored'))).toBe('restored draft');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('wenwu-settings-v1') ?? '{}').historyLimit)).toBe(50);
+});
+
+test('source previews highlight Python, C#, C++ and SQL with Shiki tokens', async ({ page }) => {
+  const samples = ['.py', '.cs', '.cpp', '.sql'].map((ext) => manifest.nodes.find((node) => node.type === 'file' && node.ext === ext && node.contentFile)).filter(Boolean);
+  test.skip(samples.length !== 4, 'All four source languages are needed for this check.');
+  for (const file of samples) {
+    await page.goto(`/#/file/${file!.id}`);
+    await expect(page.locator('.solution-code .line').first()).toBeVisible();
+    await expect(page.locator('.solution-code span[style*="color"]').first()).toBeVisible();
+  }
+});
+
+test('contrast meets WCAG text thresholds on all archive pages, viewport sizes and themes', async ({ context }) => {
+  test.setTimeout(120_000);
+  const year = manifest.nodes.find((node) => node.path.match(/^(?:classwork|homework)-(\d{4})\//))?.path.match(/^(?:classwork|homework)-(\d{4})\//)?.[1] ?? '2026';
+  const topic = manifest.nodes.find((node) => node.topic)?.topic ?? 'algorithms';
+  const py = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.py' && node.contentFile);
+  const docx = manifest.nodes.find((node) => node.type === 'file' && node.ext === '.docx' && node.previewHtml);
+  test.skip(!py || !docx, 'A Python file and converted DOCX preview are needed for the contrast audit.');
+  const viewports = [{ width: 1440, height: 1000 }, { width: 768, height: 1024 }, { width: 390, height: 844 }];
+  const { default: AxeBuilder } = await import('@axe-core/playwright');
+  const pages = [
+    '/', `/#/y/${year}`, `/#/subject/${encodeURIComponent(topic)}`, `/#/file/${py!.id}`, `/#/file/${docx!.id}`, '/#/?q=algorithm', '/#/settings',
+  ];
+  for (const theme of ['light', 'dark']) for (const path of pages) {
+    const auditPage = await context.newPage();
+    await auditPage.setViewportSize(viewports[0]);
+    await auditPage.addInitScript((selectedTheme) => {
+      localStorage.setItem('wenwu-settings-v1', JSON.stringify({ version: 1, theme: selectedTheme, textSize: 'normal', codeSize: 14, wrapCode: false, lineNumbers: true, highlightTheme: 'auto', historyLimit: 20, diaryUrl: '', diaryTemplate: 'Работа: {title}', zipFileName: '{title}.zip' }));
+    }, theme);
+    await auditPage.goto(path);
+    if (path === '/') await auditPage.getByRole('heading', { name: 'Периоды' }).waitFor();
+    if (path.includes('?q=')) await auditPage.getByRole('heading', { name: 'Результаты поиска' }).waitFor();
+    if (path.includes(docx!.id)) await auditPage.locator('.office-preview').waitFor();
+    if (path.includes(py!.id)) await auditPage.locator('.solution-code .line').first().waitFor();
+    const result = await new AxeBuilder({ page: auditPage }).withRules(['color-contrast']).analyze();
+    expect(result.violations, `${theme} ${path}`).toEqual([]);
+    for (const viewport of viewports.slice(1)) {
+      await auditPage.setViewportSize(viewport);
+      await expect.poll(() => auditPage.evaluate(() => document.documentElement.scrollWidth), { message: `${theme} ${viewport.width}px ${path}` }).toBeLessThanOrEqual(viewport.width);
+    }
+    await auditPage.close();
+  }
 });

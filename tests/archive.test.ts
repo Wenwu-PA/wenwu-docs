@@ -7,6 +7,8 @@ import { renderDiaryTemplate } from '../src/utils/diaryTemplate';
 import type { ArchiveNode } from '../src/types';
 import { clearVisitHistory, readVisitHistory, recordVisit, VISIT_HISTORY_KEY, type StorageLike } from '../src/utils/visitHistory';
 import { sortLatestTasks } from '../src/utils/latestTasks';
+import { DEFAULT_SETTINGS, readSettings, SETTINGS_KEY, writeSettings } from '../src/utils/settings';
+import { highlightMarkdown } from '../src/utils/highlightCode';
 
 const topics = YAML.parse(readFileSync('topics.config.yml', 'utf8')).topics.map((topic: { id: string; title: string; aliases: string[] }) => ({
   ...topic,
@@ -130,5 +132,42 @@ describe('diary template', () => {
     } satisfies ArchiveNode;
     expect(renderDiaryTemplate('{{title}} | {{topic}} | {{type}} | {{date}} | {{path}}', node, 'Алгоритмы'))
       .toBe('Поиск | Алгоритмы | Домашняя работа | 14-09-2026 | homework-2026/base alg/14-09-2026/HW');
+    expect(renderDiaryTemplate('{title} {githubUrl} {siteUrl}', node, 'Алгоритмы', 'https://github.com/a', 'https://site.test'))
+      .toBe('Поиск https://github.com/a https://site.test');
+  });
+});
+
+describe('settings storage', () => {
+  it('writes a versioned record and fills defaults when migrating an older record', () => {
+    const storage = new MemoryStorage();
+    writeSettings({ ...DEFAULT_SETTINGS, theme: 'dark', historyLimit: 50 }, storage);
+    expect(JSON.parse(storage.getItem(SETTINGS_KEY) ?? '{}').version).toBe(1);
+    expect(readSettings(storage)).toMatchObject({ theme: 'dark', historyLimit: 50, wrapCode: false });
+    storage.setItem(SETTINGS_KEY, JSON.stringify({ version: 0, theme: 'light', diaryUrl: 'https://example.test' }));
+    expect(readSettings(storage)).toMatchObject({ version: 1, theme: 'light', diaryUrl: 'https://example.test', historyLimit: 20 });
+    storage.setItem(SETTINGS_KEY, JSON.stringify({ version: 0 }));
+    storage.setItem('wenwu-diary-template-v1', 'legacy {title}');
+    expect(readSettings(storage).diaryTemplate).toBe('legacy {title}');
+  });
+
+  it('recovers from malformed and inaccessible settings', () => {
+    const storage = new MemoryStorage(); storage.setItem(SETTINGS_KEY, '{broken');
+    expect(readSettings(storage)).toEqual(DEFAULT_SETTINGS);
+    const blocked: Pick<Storage, 'getItem'> = { getItem: () => { throw new Error('blocked'); } };
+    expect(readSettings(blocked)).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+describe('markdown source preview', () => {
+  it('renders fenced language blocks with Shiki token spans', async () => {
+    const html = await highlightMarkdown('```python\nprint("ready")\n```');
+    expect(html).toContain('<pre class="shiki');
+    expect(html).toContain('<span class="line">');
+    expect(html).toMatch(/<span style="color:/);
+  });
+
+  it('keeps unknown fence languages as safe plain text', async () => {
+    const html = await highlightMarkdown('```unknown-wenwu\n<plain & safe>\n```');
+    expect(html).toContain('&lt;plain &amp; safe&gt;');
   });
 });

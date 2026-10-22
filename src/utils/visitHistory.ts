@@ -2,7 +2,7 @@ import type { ArchiveNode } from '../types';
 
 export const VISIT_HISTORY_KEY = 'wenwu-recent-visits-v1';
 const LEGACY_HISTORY_KEYS = ['wenwu-recently-opened', 'wenwu-history-v0'];
-const MAX_VISITS = 20;
+const DEFAULT_MAX_VISITS = 20;
 
 export interface VisitEntry {
   id: string;
@@ -62,6 +62,15 @@ function nodeForRecord(record: StoredEntry, nodes: ArchiveNode[]): ArchiveNode |
   try { return nodes.find((node) => node.id === decodeURIComponent(routeId)); } catch { return undefined; }
 }
 
+function historyLimit() {
+  let limit = DEFAULT_MAX_VISITS;
+  try {
+    const settings = JSON.parse(window.localStorage.getItem('wenwu-settings-v1') ?? 'null') as { historyLimit?: number } | null;
+    if ([10, 20, 50].includes(Number(settings?.historyLimit))) limit = Number(settings?.historyLimit);
+  } catch { /* Use the default when storage is restricted or malformed. */ }
+  return limit;
+}
+
 function normalize(records: StoredEntry[], nodes: ArchiveNode[]): VisitEntry[] {
   const merged = new Map<string, VisitEntry>();
   records.forEach((record, index) => {
@@ -71,10 +80,10 @@ function normalize(records: StoredEntry[], nodes: ArchiveNode[]): VisitEntry[] {
     const previous = merged.get(node.id);
     if (!previous || entry.visitedAt > previous.visitedAt) merged.set(node.id, entry);
   });
-  return [...merged.values()].sort((a, b) => b.visitedAt - a.visitedAt || a.path.localeCompare(b.path)).slice(0, MAX_VISITS);
+  return [...merged.values()].sort((a, b) => b.visitedAt - a.visitedAt || a.path.localeCompare(b.path)).slice(0, historyLimit());
 }
 
-function emitChange() {
+export function notifyVisitHistoryChange() {
   try { window.dispatchEvent(new Event(CHANGE_EVENT)); }
   catch { for (const listener of listeners) listener(); /* The store also works without a DOM. */ }
 }
@@ -103,13 +112,13 @@ export function recordVisit(node: ArchiveNode, nodes: ArchiveNode[], visitedAt =
   const existing = readVisitHistory(nodes, storage);
   const entry = { id: node.id, path: node.path, title: node.title || node.name, visitedAt };
   const next = [entry, ...existing.filter((item) => item.id !== node.id && item.path !== node.path)]
-    .sort((a, b) => b.visitedAt - a.visitedAt || a.path.localeCompare(b.path)).slice(0, MAX_VISITS);
+    .sort((a, b) => b.visitedAt - a.visitedAt || a.path.localeCompare(b.path)).slice(0, historyLimit());
   memoryHistory = next;
   try {
     storage?.setItem(VISIT_HISTORY_KEY, JSON.stringify(next));
     memoryAuthoritative = false;
   } catch { memoryAuthoritative = true; /* Keep the in-memory history for this tab. */ }
-  emitChange();
+  notifyVisitHistoryChange();
   return next;
 }
 
@@ -120,7 +129,7 @@ export function clearVisitHistory(storage: StorageLike | null = browserStorage()
     if (storage) for (const key of LEGACY_HISTORY_KEYS) storage.removeItem(key);
     memoryAuthoritative = false;
   } catch { memoryAuthoritative = true; /* Clearing the in-memory history still works in restricted storage modes. */ }
-  emitChange();
+  notifyVisitHistoryChange();
 }
 
 export function subscribeVisitHistory(listener: () => void): () => void {

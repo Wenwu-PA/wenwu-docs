@@ -4,9 +4,11 @@ import MarkdownIt from 'markdown-it';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { ArchiveManifest, ArchiveNode } from '../types';
 import DiaryDialog from '../components/DiaryDialog';
-import { highlightCode } from '../utils/highlightCode';
+import { highlightCode, highlightMarkdown } from '../utils/highlightCode';
 import PdfPreview from './PdfPreview';
 import { recordVisit } from '../utils/visitHistory';
+import { useSettings } from '../contexts/SettingsContext';
+import { languageForExtension, escapeHtml } from '../utils/highlightCode';
 
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true });
 markdown.renderer.rules.link_open = (tokens, index, options, _env, renderer) => {
@@ -18,12 +20,8 @@ markdown.renderer.rules.link_open = (tokens, index, options, _env, renderer) => 
   }
   return renderer.renderToken(tokens, index, options);
 };
-const codeLanguages: Record<string, string> = {
-  '.c': 'c', '.h': 'cpp', '.cc': 'cpp', '.cpp': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.cs': 'csharp',
-  '.py': 'python', '.js': 'javascript', '.jsx': 'jsx', '.ts': 'typescript', '.tsx': 'tsx', '.html': 'html',
-  '.css': 'css', '.scss': 'scss', '.sql': 'sql', '.json': 'json', '.xml': 'xml', '.yml': 'yaml', '.yaml': 'yaml',
-  '.java': 'java', '.rs': 'rust', '.php': 'php', '.sh': 'bash', '.md': 'markdown', '.markdown': 'markdown',
-};
+const codeLanguages: Record<string, string> = Object.fromEntries(['.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.cs', '.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.sql', '.kt', '.java', '.lua', '.json', '.yml', '.yaml', '.md', '.markdown', '.sh', '.bat', '.ps1', '.xml', '.rs', '.php'].map((ext) => [ext, languageForExtension(ext) ?? 'text']));
+const binaryExtensions = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.zip', '.rar', '.7z', '.mp3', '.mp4', '.exe', '.dll', '.bin']);
 const sortableDate = (value: string | null) => {
   if (!value) return '';
   const [day, month, year] = value.split(/[.-]/);
@@ -37,9 +35,11 @@ function previewUrl(node: ArchiveNode) {
 export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest }) {
   const { nodeId = '' } = useParams();
   const navigate = useNavigate();
+  const { settings, systemDark, update } = useSettings();
   const node = useMemo(() => manifest.nodes.find((item) => item.id === nodeId), [manifest.nodes, nodeId]);
   const children = useMemo(() => manifest.nodes.filter((item) => item.parentId === nodeId).sort((a, b) => a.type === b.type ? a.name.localeCompare(b.name, 'ru') : a.type === 'dir' ? -1 : 1), [manifest.nodes, nodeId]);
   const parent = node?.parentId ? manifest.nodes.find((item) => item.id === node.parentId) : undefined;
+  const statement = node?.type === 'file' ? parent?.statement : node?.statement;
   const siblings = useMemo(() => node?.type === 'dir' && node.workType ? manifest.nodes.filter((item) => item.type === 'dir' && item.parentId === node.parentId && item.workType === node.workType).sort((a, b) => sortableDate(a.date).localeCompare(sortableDate(b.date))) : [], [manifest.nodes, node]);
   const siblingIndex = siblings.findIndex((item) => item.id === nodeId);
   const previous = siblingIndex > 0 ? siblings[siblingIndex - 1] : undefined;
@@ -49,6 +49,8 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
   const error = preview.nodeId === nodeId && preview.error;
   const [highlight, setHighlight] = useState({ nodeId: '', source: '', html: '' });
   const highlighted = highlight.nodeId === nodeId && highlight.source === source ? highlight.html : '';
+  const [richPreview, setRichPreview] = useState({ nodeId: '', source: '', html: '' });
+  const [richStatement, setRichStatement] = useState({ nodeId: '', source: '', html: '' });
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [localStatuses, setLocalStatuses] = useState<Record<string, string>>(() => {
@@ -86,10 +88,23 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
     return () => { active = false; };
   }, [node]);
 
+  const activeCodeTheme = settings.highlightTheme === 'auto'
+    ? (settings.theme === 'dark' || (settings.theme === 'system' && systemDark) ? 'red-index-dark' : 'red-index-light')
+    : `red-index-${settings.highlightTheme}`;
+
+  useEffect(() => {
+    if (!node || !statement || !statement.includes('```')) return;
+    let active = true;
+    void highlightMarkdown(statement, activeCodeTheme).then((html) => {
+      if (active) setRichStatement({ nodeId, source: statement, html: DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, ADD_ATTR: ['class', 'style'] }) });
+    });
+    return () => { active = false; };
+  }, [node, nodeId, statement, activeCodeTheme]);
+
   useEffect(() => {
     if (!node || node.type !== 'file' || !source || !codeLanguages[node.ext]) return;
     let active = true;
-    highlightCode(source, codeLanguages[node.ext])
+    highlightCode(source, codeLanguages[node.ext], activeCodeTheme)
       .then((html) => {
         if (!active) return;
         let line = 0;
@@ -98,7 +113,45 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
       })
       .catch(() => { if (active) setHighlight({ nodeId: node.id, source, html: '' }); });
     return () => { active = false; };
-  }, [node, source]);
+  }, [node, source, activeCodeTheme]);
+
+  useEffect(() => {
+    if (!node || node.type !== 'file' || !source || (!node.previewHtml && !['.md', '.markdown'].includes(node.ext))) return;
+    let active = true;
+    const render = async () => {
+      let html: string;
+      if (['.md', '.markdown'].includes(node.ext)) {
+        html = await highlightMarkdown(source, activeCodeTheme);
+      } else {
+        const doc = new DOMParser().parseFromString(DOMPurify.sanitize(source, { USE_PROFILES: { html: true } }), 'text/html');
+        const blocks = [...doc.querySelectorAll('pre code')];
+        await Promise.all(blocks.map(async (code) => {
+          const cls = [...code.classList].find((item) => item.startsWith('language-'))?.slice(9);
+          const lang = cls || 'text';
+          const result = await highlightCode(code.textContent ?? '', lang, activeCodeTheme).catch(() => `<pre class="shiki"><code>${escapeHtml(code.textContent ?? '')}</code></pre>`);
+          const replacement = new DOMParser().parseFromString(result, 'text/html').body.firstElementChild;
+          if (replacement) code.parentElement?.replaceWith(replacement);
+        }));
+        html = doc.body.innerHTML;
+      }
+      if (active) setRichPreview({ nodeId, source, html: DOMPurify.sanitize(html, { USE_PROFILES: { html: true }, ADD_ATTR: ['class', 'style'] }) });
+    };
+    void render();
+    return () => { active = false; };
+  }, [node, nodeId, source, activeCodeTheme]);
+
+  useEffect(() => {
+    document.querySelectorAll<HTMLElement>('.highlighted-document pre.shiki').forEach((pre) => {
+      if (pre.parentElement?.classList.contains('code-rich-frame')) return;
+      const frame = document.createElement('div'); frame.className = 'code-rich-frame';
+      const button = document.createElement('button'); button.className = 'code-copy-button'; button.type = 'button'; button.textContent = 'Копировать код';
+      button.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(pre.innerText); button.textContent = 'Скопировано'; window.setTimeout(() => { button.textContent = 'Копировать код'; }, 1400); }
+        catch { button.textContent = 'Копирование недоступно'; }
+      });
+      pre.replaceWith(frame); frame.append(button, pre);
+    });
+  }, [richPreview, richStatement]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
@@ -118,13 +171,12 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
   const directoryFiles = children.filter((item) => item.type === 'file');
   const solutionFile = directoryFiles.find((item) => item.ext !== '.md' && item.ext !== '.txt') ?? directoryFiles[0];
   const statementNode = node.type === 'file' ? parent : node;
-  const statement = statementNode?.statement;
   const contentUrl = node.type === 'file' ? previewUrl(node) : null;
   const isMarkdown = node.ext === '.md' || node.ext === '.markdown';
   const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(node.ext);
   const isPdf = node.ext === '.pdf';
   const isOfficePreview = Boolean(node.previewHtml);
-  const isText = Boolean(codeLanguages[node.ext]) || ['.txt', '.csv', '.log', '.xml', '.yml', '.yaml'].includes(node.ext);
+  const isText = Boolean(codeLanguages[node.ext]) || ['.txt', '.csv', '.log'].includes(node.ext) || Boolean(node.contentFile && !binaryExtensions.has(node.ext) && !node.previewHtml);
   const canEdit = node.type === 'file'
     ? Boolean(node.contentFile && !isImage && !isPdf)
     : Boolean(solutionFile?.contentFile && !['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(solutionFile.ext));
@@ -142,6 +194,9 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
     await navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
+  };
+  const copyCode = async () => {
+    try { await navigator.clipboard.writeText(source); setCopied(true); window.setTimeout(() => setCopied(false), 1400); } catch { setCopied(false); }
   };
   const setLineLink = (event: { target: EventTarget | null; shiftKey: boolean }) => {
     const target = event.target instanceof Element ? event.target.closest<HTMLElement>('.line[id]') : null;
@@ -178,15 +233,15 @@ export default function AssignmentPage({ manifest }: { manifest: ArchiveManifest
     <hr className="assignment-rule" />
     {node.type === 'dir' ? <>
       <div className="assignment-columns">
-        <section className="statement-panel"><span className="section-label">01 / {statement ? 'УСЛОВИЕ' : 'ПАПКА'}</span><h2>{statement ? title : 'Материалы раздела'}</h2>{statement && <div className="markdown-view" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(markdown.render(statement)) }} />}{node.method && <><span className="eyebrow">МЕТОД</span><p>{node.method}</p></>}</section>
+        <section className="statement-panel"><span className="section-label">01 / {statement ? 'УСЛОВИЕ' : 'ПАПКА'}</span><h2>{statement ? title : 'Материалы раздела'}</h2>{statement && <div className="markdown-view highlighted-document" dangerouslySetInnerHTML={{ __html: richStatement.nodeId === nodeId && richStatement.source === statement ? richStatement.html : DOMPurify.sanitize(markdown.render(statement)) }} />}{node.method && <><span className="eyebrow">МЕТОД</span><p>{node.method}</p></>}</section>
         <section className="solution-panel"><div className="solution-header"><span className="section-label">02 / ФАЙЛЫ</span><div className="solution-toolbar">{canEdit && <Link to={`/edit/${solutionFile?.id ?? node.id}`}>Редактировать</Link>}<button onClick={() => setDiaryOpen(true)}>В дневник</button></div></div><DirectoryListing items={children} /></section>
       </div>
     </> : <>
       <div className="assignment-columns">
-        <section className="statement-panel"><span className="section-label">01 / {statement ? 'УСЛОВИЕ' : 'АРХИВ'}</span>{statement && <><h2>{statementNode?.title ?? title}</h2><div className="markdown-view" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(markdown.render(statement)) }} /></>}{node.method && <><span className="eyebrow">МЕТОД</span><p>{node.method}</p></>}<span className="eyebrow">ФАЙЛ / {node.size.toLocaleString('ru-RU')} Б · {node.lines ?? '—'} СТРОК</span></section>
+        <section className="statement-panel"><span className="section-label">01 / {statement ? 'УСЛОВИЕ' : 'АРХИВ'}</span>{statement && <><h2>{statementNode?.title ?? title}</h2><div className="markdown-view highlighted-document" dangerouslySetInnerHTML={{ __html: richStatement.nodeId === nodeId && richStatement.source === statement ? richStatement.html : DOMPurify.sanitize(markdown.render(statement)) }} /></>}{node.method && <><span className="eyebrow">МЕТОД</span><p>{node.method}</p></>}<span className="eyebrow">ФАЙЛ / {node.size.toLocaleString('ru-RU')} Б · {node.lines ?? '—'} СТРОК</span></section>
         <section className="solution-panel" aria-label="Содержимое файла">
-          <div className="solution-header"><span className="section-label">02 / РЕШЕНИЕ</span><span className="solution-name">{node.name}</span><div className="solution-toolbar"><button onClick={copyLink}>Ссылка</button><Link to={`/edit/${node.id}`}>Редактировать</Link><button onClick={() => setDiaryOpen(true)}>В дневник</button></div></div>
-          {node.conversionError ? <p className="message-error">Не удалось преобразовать файл для просмотра. <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : isPdf ? <PdfPreview url={contentUrl ?? node.rawUrl ?? node.githubUrl} /> : !node.contentFile && !node.previewHtml ? <p>Просмотр недоступен для этого формата или размера файла. <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : error ? <p role="alert">Не удалось загрузить файл. <a href={node.githubUrl}>Открыть на GitHub ↗</a></p> : !source ? <p>Загружаю файл…</p> : isOfficePreview ? <div className="markdown-view office-preview" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(source, { USE_PROFILES: { html: true } }) }} /> : isMarkdown ? <div className="markdown-view" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(markdown.render(source)) }} /> : isImage ? <img className="solution-image" src={contentUrl ?? ''} alt={node.name} /> : isText ? <pre className="solution-code" tabIndex={0} aria-label={`Код файла ${node.name}`} onClick={setLineLink} onKeyDown={(event) => { if (event.key === 'Enter') setLineLink(event); }} title="Нажмите на строку, Shift + нажатие задаёт диапазон ссылки">{highlighted ? <code dangerouslySetInnerHTML={{ __html: highlighted }} /> : <code>{source}</code>}</pre> : <p>Просмотр недоступен для этого формата. Скачайте файл или откройте его на GitHub.</p>}
+          <div className="solution-header"><span className="section-label">02 / РЕШЕНИЕ</span><span className="solution-name">{node.name}</span><div className="solution-toolbar">{isText && <button onClick={copyCode}>{copied ? 'Скопировано' : 'Копировать код'}</button>}<button aria-pressed={settings.wrapCode} onClick={() => update('wrapCode', !settings.wrapCode)}>{settings.wrapCode ? 'Без переноса' : 'Перенос строк'}</button><button onClick={copyLink}>Ссылка</button><Link to={`/edit/${node.id}`}>Редактировать</Link><button onClick={() => setDiaryOpen(true)}>В дневник</button></div></div>
+          {node.conversionError ? <p className="message-error">Не удалось преобразовать файл для просмотра. <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : isPdf ? <PdfPreview url={contentUrl ?? node.rawUrl ?? node.githubUrl} /> : !node.contentFile && !node.previewHtml ? <p>Просмотр недоступен для этого формата или размера файла. <a href={node.rawUrl ?? node.githubUrl}>Скачать оригинал ↗</a></p> : error ? <p role="alert">Не удалось загрузить файл. <a href={node.githubUrl}>Открыть на GitHub ↗</a></p> : !source ? <p>Загружаю файл…</p> : isOfficePreview ? <div className="markdown-view office-preview highlighted-document" dangerouslySetInnerHTML={{ __html: richPreview.nodeId === nodeId && richPreview.source === source ? richPreview.html : DOMPurify.sanitize(source, { USE_PROFILES: { html: true } }) }} /> : isMarkdown ? <div className="markdown-view highlighted-document" dangerouslySetInnerHTML={{ __html: richPreview.nodeId === nodeId && richPreview.source === source ? richPreview.html : DOMPurify.sanitize(markdown.render(source)) }} /> : isImage ? <img className="solution-image" src={contentUrl ?? ''} alt={node.name} /> : isText ? <pre className={`solution-code${settings.wrapCode ? ' solution-code--wrap' : ''}`} tabIndex={0} aria-label={`Код файла ${node.name}`} onClick={setLineLink} onKeyDown={(event) => { if (event.key === 'Enter') setLineLink(event); }} title="Нажмите на строку, Shift + нажатие задаёт диапазон ссылки">{highlighted ? <code dangerouslySetInnerHTML={{ __html: highlighted }} /> : <code>{source}</code>}</pre> : <p>Просмотр недоступен для этого формата. Скачайте файл или откройте его на GitHub.</p>}
         </section>
       </div>
       {solutionFile && <Link className="next-assignment" to={`/file/${solutionFile.id}`}>Открыть файл решения → {solutionFile.name}</Link>}

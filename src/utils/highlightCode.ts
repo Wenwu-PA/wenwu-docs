@@ -1,5 +1,6 @@
 import { createHighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
+import MarkdownIt from 'markdown-it';
 
 const imports = {
   c: () => import('@shikijs/langs/c'),
@@ -21,24 +22,82 @@ const imports = {
   rust: () => import('@shikijs/langs/rust'),
   php: () => import('@shikijs/langs/php'),
   bash: () => import('@shikijs/langs/bash'),
+  kotlin: () => import('@shikijs/langs/kotlin'),
+  lua: () => import('@shikijs/langs/lua'),
+  powershell: () => import('@shikijs/langs/powershell'),
+  batch: () => import('@shikijs/langs/batch'),
+  markdown: () => import('@shikijs/langs/markdown'),
+};
+
+const redIndexLight = {
+  name: 'red-index-light', type: 'light' as const,
+  colors: { 'editor.background': '#FAFAF6', 'editor.foreground': '#242421', 'editorLineNumber.foreground': '#62625C' },
+  tokenColors: [
+    { scope: ['keyword', 'storage', 'storage.type'], settings: { foreground: '#B01E1B', fontStyle: 'bold' } },
+    { scope: ['string', 'string.quoted'], settings: { foreground: '#505047' } },
+    { scope: ['constant.numeric', 'constant.language'], settings: { foreground: '#505047' } },
+    { scope: ['comment'], settings: { foreground: '#62625C', fontStyle: 'italic' } },
+    { scope: ['entity.name.function', 'support.function'], settings: { foreground: '#242421' } },
+  ],
+};
+const redIndexDark = {
+  name: 'red-index-dark', type: 'dark' as const,
+  colors: { 'editor.background': '#242421', 'editor.foreground': '#FAFAF6', 'editorLineNumber.foreground': '#C1C1B8' },
+  tokenColors: [
+    { scope: ['keyword', 'storage', 'storage.type'], settings: { foreground: '#FF7772', fontStyle: 'bold' } },
+    { scope: ['string', 'string.quoted'], settings: { foreground: '#E8E8DE' } },
+    { scope: ['constant.numeric', 'constant.language'], settings: { foreground: '#E8E8DE' } },
+    { scope: ['comment'], settings: { foreground: '#C1C1B8', fontStyle: 'italic' } },
+    { scope: ['entity.name.function', 'support.function'], settings: { foreground: '#FAFAF6' } },
+  ],
 };
 
 const highlighter = createHighlighterCore({
-  themes: [import('@shikijs/themes/github-light')],
+  themes: [redIndexLight, redIndexDark],
   langs: [],
   engine: createJavaScriptRegexEngine(),
 });
 
 const loadedLanguages = new Set<string>();
 
-export async function highlightCode(source: string, language: string) {
+export async function highlightCode(source: string, language: string, theme = 'red-index-light') {
   const load = imports[language as keyof typeof imports];
-  if (!load) throw new Error(`Unsupported language: ${language}`);
+  if (!load) return `<pre class="shiki"><code>${escapeHtml(source)}</code></pre>`;
   const instance = await highlighter;
   if (!loadedLanguages.has(language)) {
     const grammar = await load() as Parameters<typeof instance.loadLanguage>[0];
     await instance.loadLanguage(grammar);
     loadedLanguages.add(language);
   }
-  return instance.codeToHtml(source, { lang: language, theme: 'github-light' });
+  return instance.codeToHtml(source, { lang: language, theme });
+}
+
+export async function highlightMarkdown(source: string, theme = 'red-index-light') {
+  const parser = new MarkdownIt({ html: false, linkify: true, typographer: true });
+  parser.renderer.rules.link_open = (items, index, options, _env, renderer) => {
+    const token = items[index];
+    if (/^https?:\/\//i.test(String(token.attrGet('href') ?? ''))) { token.attrSet('target', '_blank'); token.attrSet('rel', 'noopener noreferrer'); }
+    return renderer.renderToken(items, index, options);
+  };
+  const tokens = parser.parse(source, {});
+  const rendered = await Promise.all(tokens.map(async (token) => token.type === 'fence'
+    ? highlightCode(token.content, token.info.trim().split(/\s+/)[0] || 'text', theme).catch(() => `<pre class="shiki"><code>${escapeHtml(token.content)}</code></pre>`)
+    : Promise.resolve('')));
+  const oldFence = parser.renderer.rules.fence;
+  parser.renderer.rules.fence = (items, index, options, env, renderer) => rendered[index] || oldFence?.(items, index, options, env, renderer) || '';
+  return parser.renderer.render(tokens, parser.options, {});
+}
+
+export function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+}
+
+export function languageForExtension(extension: string): string | undefined {
+  const map: Record<string, string> = {
+    '.c': 'c', '.h': 'cpp', '.cc': 'cpp', '.cpp': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.cs': 'csharp',
+    '.py': 'python', '.js': 'javascript', '.jsx': 'jsx', '.ts': 'typescript', '.tsx': 'tsx', '.html': 'html',
+    '.css': 'css', '.sql': 'sql', '.kt': 'kotlin', '.java': 'java', '.lua': 'lua', '.json': 'json',
+    '.yaml': 'yaml', '.yml': 'yaml', '.md': 'markdown', '.markdown': 'markdown', '.sh': 'bash', '.bat': 'batch', '.ps1': 'powershell', '.xml': 'xml',
+  };
+  return map[extension.toLowerCase()];
 }

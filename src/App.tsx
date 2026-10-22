@@ -9,7 +9,8 @@ import KitPage from './pages/KitPage';
 import TreePage from './pages/TreePage';
 import Footer from './components/Footer';
 import HierarchyPage from './pages/HierarchyPage';
-import SettingsDialog from './components/SettingsDialog';
+import SettingsPage from './pages/SettingsPage';
+import { SettingsProvider } from './contexts/SettingsContext';
 
 interface ErrorBoundaryState { failed: boolean }
 
@@ -27,7 +28,6 @@ export default function App() {
   const [manifest, setManifest] = useState<ArchiveManifest | null>(null);
   const [error, setError] = useState(false);
   const [newVersion, setNewVersion] = useState('');
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const load = useCallback(async () => {
     let buildId = 'local';
     try {
@@ -67,7 +67,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <Header />
+      <SettingsProvider><Header />
       <ScrollManager />
       {newVersion && <div className="version-banner" role="status">Доступна новая версия <button className="text-link plain-button" onClick={() => { try { localStorage.setItem('wenwu-build-id', newVersion); } catch { /* Storage can be disabled in private browsing. */ } window.location.reload(); }}>Обновить</button><button className="plain-button" aria-label="Скрыть уведомление" onClick={() => setNewVersion('')}>×</button></div>}
       <Routes>
@@ -80,10 +80,11 @@ export default function App() {
         <Route path="/tree" element={<TreePage manifest={manifest} />} />
         <Route path="/tree/:nodeId" element={<TreePage manifest={manifest} />} />
         <Route path="/_kit" element={<KitPage topics={manifest.topics} />} />
+        <Route path="/settings" element={<SettingsPage manifest={manifest} />} />
         <Route path="*" element={<ArchivePage manifest={manifest} />} />
       </Routes>
-      <Footer manifest={manifest} onOpenSettings={() => setSettingsOpen(true)} />
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      <Footer manifest={manifest} />
+      </SettingsProvider>
     </ErrorBoundary>
   );
 }

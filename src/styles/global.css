@@ -14,7 +14,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: var(--text-base);
+  font-size: calc(var(--text-base) * var(--text-scale));
   line-height: var(--leading-copy);
 }
 button, input, select, textarea { font: inherit; }
@@ -40,7 +40,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .mono, .eyebrow, .path-label, .date-label, .work-label, .file-ext { font-family: var(--font-mono); }
 .eyebrow, .path-label { font-size: var(--text-xs); line-height: var(--leading-normal); }
 .eyebrow { color: var(--muted); }
-.icon-text { color: var(--red); }
+.icon-text { color: var(--red-ink); }
 .icon-text:hover, .text-link:hover { color: var(--red-hover); }
 .button {
   min-height: var(--space-5);
@@ -52,6 +52,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
   transition: color var(--duration-fast), border-color var(--duration-fast), background var(--duration-fast);
 }
