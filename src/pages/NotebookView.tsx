@@ -5,7 +5,7 @@ import { highlightCode } from '../utils/highlightCode';
 import { escapeHtml } from '../utils/highlightCode';
 
 export interface NotebookOutput {
-  type: 'stream' | 'error' | 'text' | 'html' | 'image';
+  type: 'stream' | 'error' | 'text' | 'html' | 'image' | 'hidden';
   name?: string;
   mime?: string;
   text?: string;
@@ -129,15 +129,16 @@ export default function NotebookView({ notebook, theme, nodeId, contentUrl, gith
       <div className="notebook-cell-heading"><Link to={`/file/${nodeId}?cell=${cell.index}`} aria-label={`Ссылка на ячейку ${cell.index}`}>In [{cell.executionCount ?? ' '} ]</Link><span>{cell.type === 'markdown' ? 'MARKDOWN' : cell.type === 'raw' ? 'RAW' : notebook.language.toUpperCase()}</span>{cell.type === 'code' && <button type="button" onClick={() => void copy(cell.source, cell.index)}>{copied === cell.index ? 'Скопировано' : 'Копировать ячейку'}</button>}</div>
           {cell.type === 'markdown' ? <div className="notebook-markdown markdown-view" dangerouslySetInnerHTML={{ __html: rendered[String(cell.index)] ?? sanitize(cell.html ?? '') }} /> : cell.type === 'raw' ? <pre className="notebook-raw">{cell.source}</pre> : <>
         <div className="notebook-code" dangerouslySetInnerHTML={{ __html: rendered[String(cell.index)] ?? `<pre><code>${escapeHtml(cell.source)}</code></pre>` }} />
-        {cell.outputs.map((output, outputIndex) => <NotebookOutputView output={output} key={`${cell.index}-${outputIndex}`} html={rendered[`${cell.index}-output-${outputIndex}`]} />)}
+        {cell.outputs.map((output, outputIndex) => <NotebookOutputView output={output} originalUrl={contentUrl} key={`${cell.index}-${outputIndex}`} html={rendered[`${cell.index}-output-${outputIndex}`]} />)}
       </>}
     </article>)}
   </section>;
 }
 
-function NotebookOutputView({ output, html }: { output: NotebookOutput; html?: string }) {
+function NotebookOutputView({ output, html, originalUrl }: { output: NotebookOutput; html?: string; originalUrl: string }) {
   const text = output.text ?? '';
   const long = text.length > 5000;
+  if (output.type === 'hidden') return <p className="notebook-output notebook-output--hidden">вывод скрыт: слишком большой · <a href={originalUrl} download>Скачать оригинал</a></p>;
   if (output.type === 'image' && output.source) return <figure className="notebook-output notebook-output--image"><img src={output.source} alt={`Вывод ${output.mime ?? 'image'}`} loading="lazy" /></figure>;
   if (output.type === 'html' && output.html) return <div className="notebook-output notebook-output--html" dangerouslySetInnerHTML={{ __html: html ?? sanitize(output.html) }} />;
   const body = output.html ? <div className="notebook-output-ansi" dangerouslySetInnerHTML={{ __html: sanitize(output.html) }} /> : <pre className={output.type === 'error' ? 'notebook-output-error' : 'notebook-output-text'}>{text}</pre>;

@@ -14,7 +14,6 @@ const sourceDir = path.resolve(process.env.CONTENT_DIR ?? 'content-src');
 const outDir = path.resolve('public');
 const gitUrl = 'https://github.com/Wenwu-PA/IT-TOP_academy';
 const maxPreviewBytes = 1024 * 1024;
-const maxNotebookBytes = 5 * 1024 * 1024;
 const searchableTextBytes = 32 * 1024;
 const textualExts = new Set([
   '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh', '.cs', '.py', '.js', '.jsx', '.ts', '.tsx',
@@ -31,7 +30,7 @@ const conversionCache = path.resolve('node_modules/.cache/archive-conversions');
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 async function cachedConversion(filePath, convert) {
   const bytes = await readFile(filePath);
-  const key = createHash('sha256').update('archive-conversion-v2\0').update(bytes).digest('hex');
+  const key = createHash('sha256').update('archive-conversion-v3\0').update(bytes).digest('hex');
   const cacheFile = path.join(conversionCache, `${key}.json`);
   try { return JSON.parse(await readFile(cacheFile, 'utf8')); } catch { /* Cache miss. */ }
   const result = await convert(bytes);
@@ -204,7 +203,7 @@ for (const rel of [...files.keys()].sort((a, b) => a.localeCompare(b, 'ru'))) {
   const isMedia = mediaExts.has(ext);
   const id = stableId(rel);
   const assetKey = createHash('sha256').update(rel).digest('hex');
-  const previewable = (isText || isMedia || documentExts.has(ext)) && file.stat.size <= (ext === '.ipynb' ? maxNotebookBytes : documentExts.has(ext) ? 10 * maxPreviewBytes : maxPreviewBytes);
+  const previewable = (isText || isMedia || documentExts.has(ext)) && file.stat.size <= (documentExts.has(ext) ? 10 * maxPreviewBytes : maxPreviewBytes);
   const commit = git.last.get(rel);
   const firstCommit = git.first.get(rel);
   let body = '';
@@ -216,7 +215,6 @@ for (const rel of [...files.keys()].sort((a, b) => a.localeCompare(b, 'ru'))) {
   if (['.docx', '.pptx', '.xlsx', '.csv', '.pdf', '.ipynb'].includes(ext)) {
     try {
       if (ext === '.ipynb') {
-        if (file.stat.size > maxNotebookBytes) throw new Error('Notebook exceeds the 5 MiB preview limit.');
         const result = await cachedConversion(file.full, async (bytes) => convertNotebook(bytes.toString('utf8')));
         body = result.searchText.slice(0, searchableTextBytes);
         notebookFile = `/content/previews/${assetKey}.json`;

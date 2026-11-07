@@ -2,6 +2,8 @@ import MarkdownIt from 'markdown-it';
 
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true, breaks: true });
 const maxEmbeddedImageBase64 = 400_000;
+const maxTextOutputBytes = 64 * 1024;
+const maxNotebookOutputBytes = 1024 * 1024;
 // eslint-disable-next-line no-control-regex
 const stripAnsi = (value) => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
 const asText = (value) => Array.isArray(value) ? value.join('') : String(value ?? '');
@@ -35,8 +37,14 @@ function attachmentData(cell) {
   return result;
 }
 
-function outputsFor(cell) {
+function outputsFor(cell, budget) {
   return (cell.outputs ?? []).map((output) => {
+    // Bound each output and the sum across cells, while retaining every source cell.
+    const bytes = Buffer.byteLength(JSON.stringify(output), 'utf8');
+    const hasImage = Object.keys(output.data ?? {}).some((mime) => mime.startsWith('image/'));
+    const limit = hasImage ? maxEmbeddedImageBase64 : maxTextOutputBytes;
+    if (bytes > limit || bytes > budget.remaining) return { type: 'hidden' };
+    budget.remaining -= bytes;
     if (output.output_type === 'stream') {
       const text = asText(output.text);
       return { type: 'stream', name: output.name ?? 'stdout', text: stripAnsi(text), html: ansiHtml(text) };
@@ -71,6 +79,7 @@ export function convertNotebook(source) {
   const notebook = JSON.parse(source);
   const formatVersion = Number(notebook.nbformat ?? 3);
   const language = getLanguage(notebook);
+  const budget = { remaining: maxNotebookOutputBytes };
   const cells = normalizeCells(notebook).map((cell, index) => {
     const text = asText(cell.source);
     if (cell.cell_type === 'markdown' || cell.cell_type === 'heading') {
@@ -79,7 +88,7 @@ export function convertNotebook(source) {
       return { index: index + 1, type: 'markdown', source: markdownSource, html: markdown.render(markdownSource), outputs: [] };
     }
     if (cell.cell_type === 'raw') return { index: index + 1, type: 'raw', source: text, outputs: [] };
-    return { index: index + 1, type: 'code', source: text, executionCount: cell.execution_count ?? null, outputs: outputsFor(cell) };
+    return { index: index + 1, type: 'code', source: text, executionCount: cell.execution_count ?? null, outputs: outputsFor(cell, budget) };
   });
   const searchText = cells.map((cell) => cell.source).join('\n').slice(0, 32 * 1024);
   return { format: 'wenwu-notebook', nbformat: formatVersion, language, cells, cellCount: cells.length, searchText };

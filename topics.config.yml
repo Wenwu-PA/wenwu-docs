@@ -7,13 +7,13 @@ topics:
     aliases: [system programming, system_programming, системное программирование]
   - id: databases
     title: Базы данных
-    aliases: [sql server, основы бд, базы данных, databases, database]
+    aliases: [SQL, sql server, основы бд, базы данных, databases, database]
   - id: english
     title: Английский язык
     aliases: [англ, english, английский язык]
   - id: management
     title: Менеджмент
-    aliases: [manegment, management, менеджмент]
+    aliases: [manegment, management, менеджмент, MOP_work]
   - id: cpp
     title: C++
     aliases: [c++, cpp]
@@ -25,7 +25,7 @@ topics:
     aliases: [supp, supp_and_test_po, supp_and_test_po, разработка по, support and testing po]
   - id: networks
     title: Компьютерные сети
-    aliases: [сети, комп сети, networking, networks]
+    aliases: [сети, комп сети, networking, networks, net_sys]
   - id: discrete-math
     title: Дискретная математика
     aliases: [дискретная, discrete mathematics]

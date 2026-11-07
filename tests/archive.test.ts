@@ -18,6 +18,13 @@ const topics = YAML.parse(readFileSync('topics.config.yml', 'utf8')).topics.map(
 }));
 
 describe('manifest', () => {
+  it.each([
+    ['classwork-2026/MOP_work/compare_crm.py', 'management'],
+    ['classwork-2026/net_sys/05-10-2026/server.cpp', 'networks'],
+    ['classwork-2026/SQL/17-10.2026/CW.sql', 'databases'],
+  ])('merges the subject alias for %s into %s', (file, topic) => {
+    expect(classifyTopic(file, topics)).toBe(topic);
+  });
   it('validates generated structure and rejects unknown node types', () => {
     const manifest = JSON.parse(readFileSync('public/data/manifest.json', 'utf8'));
     expect(manifestSchema.parse(manifest).nodes.length).toBeGreaterThan(0);
